@@ -1,0 +1,29 @@
+# Local (Windows / RTX 3060 6 GB) requirements — dev, 4-bit inference, dry-runs only.
+# Kaggle has its own environment; do NOT share a single pin file between the two.
+#
+# torch is NOT listed here on purpose. Installing it from the default PyPI index
+# would pull a CPU-only build. Install it first, from the CUDA 13.0 index:
+#
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+#
+# ...then:  pip install -r requirements-local.txt
+
+# Deliberate pin: every Cosmos / Qwen3-VL example targets 4.5x, and 5.x is a
+# breaking major release. This is a decision, not staleness. See docs/plan.md §7.
+transformers>=4.57,<5
+
+peft
+bitsandbytes
+accelerate
+datasets
+qwen-vl-utils
+pillow
+
+# Must stay <1.0: transformers 4.57.x requires huggingface-hub<1.0,>=0.34.0, but the
+# unpinned `huggingface_hub[cli]` resolves to 1.x and sends pip backtracking through
+# every 1.x release before it finds a compatible one. Pinning here is purely to make
+# resolution fast and deterministic; it follows from the transformers<5 pin above, so
+# these two move together.
+huggingface_hub[cli]>=0.34,<1.0
+
+# trl is deferred to the training milestone (Week 3) — not needed yet.
