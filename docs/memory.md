@@ -8,7 +8,9 @@
 
 ## 1. Current state
 
-**Phase:** Week 1, **Milestone A complete** (2026-07-28). Venv built, full local stack installed, `scripts/check_env.py` passes on the 3060, git repo initialised with a first commit. **Not yet pushed to GitHub** — no remote configured, `gh` CLI is not installed.
+**Phase:** Week 1, **Milestone A ✅ COMPLETE** (2026-07-28). Venv built, full local stack installed, `scripts/check_env.py` passes on the 3060, committed and pushed.
+
+**Repo:** <https://github.com/AadiPathak23/featherweigh-ai> — public. ⚠️ **The repo name is missing the `t`** ("featherweigh"), while the project, the local folder, and the docs all say *featherweight*. Not yet renamed; GitHub redirects after a rename, so the fix stays cheap until the URL is cited in the paper or an HF model card. `gh` CLI is **not** installed; pushes use stored HTTPS credentials.
 
 **Next action:** Milestone B — accept the `nvidia/Cosmos-Reason2-2B` license gate + create an HF token (**blocking, needs user**), then `huggingface-cli login` and write `scripts/infer_local.py`. See `plan.md` §5.
 
@@ -156,4 +158,4 @@ safetensors==0.8.0           numpy==2.4.4              pillow==12.2.0
 - **2026-07-28 — Milestone A ✅ PASSED.** Built `.venv` on Python 3.13.0; torch 2.13.0+cu130 from the cu130 index; rest of the stack from `requirements-local.txt`. Wrote `scripts/check_env.py`, `.gitignore`, `requirements-local.txt`; `git init` + first commit. `check_env.py` output: `cuda_available=True`, `device=NVIDIA GeForce RTX 3060 Laptop GPU`, `capability=(8, 6)`, `total_vram=6.00 GiB`, `bf16_native=True`, bitsandbytes 0.50.0 `Linear4bit` nf4 forward pass OK, exit 0. Closed three 🟢 risks (bnb-on-Windows, cu130 gaps, py3.13 gaps); found and pinned one new one (huggingface_hub `<1.0`).
   - `check_env.py` reports **`bf16_supported`** (torch, `including_emulation=False`) *and* **`bf16_native`** (derived from compute capability) as separate lines. Reason: `torch.cuda.is_bf16_supported()` counts *emulated* bf16 and can return `True` on a T4 — which would look like it falsifies the no-bf16 constraint (§5) when the hardware reality is unchanged. **On Kaggle, `bf16_native=False` is the line that matters.**
   - Measured on the 3060 **after CUDA context init**: 5.00 GiB free of 6.00 GiB. The ~1.0 GiB unavailable is other processes *plus torch's own CUDA context*. Relevant to the Milestone B budget: the `< 5.0 GB` target is `max_memory_allocated()`, which excludes the context, so context overhead sits on top of it.
-  - Not pushed to GitHub: no remote set, `gh` CLI not installed. Local git identity is `AadiPathak23 / aadipathak2323@gmail.com`.
+  - Pushed to <https://github.com/AadiPathak23/featherweigh-ai> (public) as commit `d829ff3`; `main` tracks `origin/main`. Git identity `AadiPathak23 / aadipathak2323@gmail.com`. **Milestone A is 5/5 — all steps done.**
