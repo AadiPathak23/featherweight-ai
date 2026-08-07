@@ -8,7 +8,11 @@
 
 ## 1. Current state
 
-**Phase:** Week 1, **Milestone A ✅ COMPLETE** (2026-07-28). Venv built, full local stack installed, `scripts/check_env.py` passes on the 3060, committed and pushed.
+**Phase:** Week 1, **Milestone B ✅ COMPLETE** (2026-08-06). Cosmos-Reason2-2B loads in 4-bit on the 6 GB 3060 and produces a correct, on-topic description of a traffic scene. Peak **2.10 GiB** vs the <5.0 GB target. Latency **7–10 tok/s** (the edge-target figure for Week 5). Details in §3.
+
+**Next action:** Milestone C — Kaggle account + phone verification, T4 x2 notebook, HF token in Secrets, `git clone` + run `check_env.py` unmodified. See `plan.md` §5.
+
+**Milestone A ✅ COMPLETE** (2026-07-28). Venv built, full local stack installed, `scripts/check_env.py` passes on the 3060, committed and pushed.
 
 **Repo:** <https://github.com/AadiPathak23/featherweigh-ai> — public. ⚠️ **The repo name is missing the `t`** ("featherweigh"), while the project, the local folder, and the docs all say *featherweight*. Not yet renamed; GitHub redirects after a rename, so the fix stays cheap until the URL is cited in the paper or an HF model card. `gh` CLI is **not** installed; pushes use stored HTTPS credentials.
 
@@ -70,7 +74,19 @@
 | Min transformers | **`>=4.57.0`** for Qwen3-VL | cosmos-reason2 repo + Qwen3-VL docs |
 | Prior art | `embedl/Cosmos-Reason2-2B-W4A16` exists on HF → evidence 4-bit Cosmos-Reason2 is viable; **cite as related work** | HF search |
 
-**Estimated 4-bit footprint:** 2.44B params at NF4 ≈ **1.4–1.6 GB** + ViT tower + unquantized layers. Fits 6 GB **if vision tokens are capped** via `max_pixels`. Activation memory from high-res images is the OOM risk, not the weights.
+**✅ MEASURED 4-bit footprint (2026-08-06, Milestone B):** resident weights **1.47 GiB** — the 1.4–1.6 GB estimate was accurate. Worst-case peak **2.10 GiB**, well inside the <5.0 GB target.
+
+| Fact | Value |
+|---|---|
+| Quantized | **1.81B** params → uint8-packed NF4, 300 tensors |
+| **Left fp16** | **0.32B** params, 325 tensors |
+| Largest unquantized tensor | `model.language_model.embed_tokens.weight`, **311.2M params ≈ 622 MB = 42% of resident weights** |
+| `tie_word_embeddings` | **True** — `lm_head` *is* `embed_tokens`, one tensor. (Card's 2.44B counts it twice; only 2.13B distinct params exist in memory.) |
+| Vision geometry | patch 16, merge 2 → **1024 px per vision token**. ⚠️ `plan.md`'s `256*28*28` was **Qwen2-VL** geometry; Qwen3-VL differs. Derive from `processor.image_processor` at runtime, never hardcode. |
+
+**Peak occurs at LOAD, not inference** (2.10 GiB transient while unpacking+quantizing, vs 1.55 GiB during generation). If this model ever OOMs, expect it at load time.
+
+**Activations were a non-issue at inference:** 247 vision tokens cost +0.01 GiB, 57-token KV cache +0.01 GiB. This does **not** clear the risk for training, where activations are retained for the backward pass — that remains a Week 3 concern.
 
 ---
 
@@ -159,3 +175,7 @@ safetensors==0.8.0           numpy==2.4.4              pillow==12.2.0
   - `check_env.py` reports **`bf16_supported`** (torch, `including_emulation=False`) *and* **`bf16_native`** (derived from compute capability) as separate lines. Reason: `torch.cuda.is_bf16_supported()` counts *emulated* bf16 and can return `True` on a T4 — which would look like it falsifies the no-bf16 constraint (§5) when the hardware reality is unchanged. **On Kaggle, `bf16_native=False` is the line that matters.**
   - Measured on the 3060 **after CUDA context init**: 5.00 GiB free of 6.00 GiB. The ~1.0 GiB unavailable is other processes *plus torch's own CUDA context*. Relevant to the Milestone B budget: the `< 5.0 GB` target is `max_memory_allocated()`, which excludes the context, so context overhead sits on top of it.
   - Pushed to <https://github.com/AadiPathak23/featherweigh-ai> (public) as commit `d829ff3`; `main` tracks `origin/main`. Git identity `AadiPathak23 / aadipathak2323@gmail.com`. **Milestone A is 5/5 — all steps done.**
+- **2026-08-06 — Milestone B ✅ PASSED.** HF account `Aadi58`; license gate accepted. Note: a valid token alone still returned **403** — **gate acceptance and authentication are separate things**. `scripts/infer_local.py` loads Cosmos-Reason2-2B in 4-bit NF4 + double-quant with fp16 compute, and describes the traffic-cop scene correctly (orange vest, red vehicle, motion-blurred white bus). Peak **2.10 GiB**, resident **1.47 GiB**, 57 tokens in 8.2 s (**7–10 tok/s**). Load: 439 s first run (incl. 4.9 GB download), **14.3 s cached**.
+  - **Instrumentation bug found and fixed — carries forward.** `max_memory_allocated()` is a high-water mark that never decreases, so reading it at successive checkpoints *without* `reset_peak_memory_stats()` reports every later phase as the earliest spike and makes all phase deltas zero. `vram()` now resets after each read. **Every future VRAM measurement must do this**, or the Week 4/5 benchmark columns will be silently wrong.
+  - `transformers` 4.57 deprecates `torch_dtype=` in favour of `dtype=`.
+  - Benign Windows warnings, non-blocking: HF cache symlinks unavailable (more disk used), `hf_xet` missing (slower downloads), `triton` missing.
