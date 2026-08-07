@@ -2,7 +2,7 @@
 
 > **Re-read this file first** to regain context in a new session. Companion: [`plan.md`](./plan.md) (roadmap).
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
-> Last updated: 2026-07-28
+> Last updated: 2026-08-07
 
 ---
 
@@ -14,15 +14,15 @@
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
 
-**Milestone B ✅ COMPLETE** (2026-08-06). Cosmos-Reason2-2B loads in 4-bit on the 6 GB 3060 and produces a correct, on-topic description of a traffic scene. Peak **2.10 GiB** vs the <5.0 GB target. Latency **7–10 tok/s** (the edge-target figure for Week 5). Details in §3.
+**Week 1 milestones** *(detail in the §7 state log)*
 
-**Next action:** Milestone C — Kaggle account + phone verification, T4 x2 notebook, HF token in Secrets, `git clone` + run `check_env.py` unmodified. See `plan.md` §5.
+| | Result |
+|---|---|
+| **A** — local env | ✅ 2026-07-28. Venv, pinned stack, `check_env.py` passes on the 3060. |
+| **B** — 4-bit local inference | ✅ 2026-08-06. Peak **2.10 GiB** vs <5.0 GB target; correct traffic-scene answer; **7–10 tok/s** (the Week 5 edge-target figure). |
+| **C** — Kaggle bridge | ✅ 2026-08-07. T4 x2, `check_env.py` runs unmodified from a clone; **bf16 confirmed absent in hardware**. |
 
-**Milestone A ✅ COMPLETE** (2026-07-28). Venv built, full local stack installed, `scripts/check_env.py` passes on the 3060, committed and pushed.
-
-**Repo:** <https://github.com/AadiPathak23/featherweigh-ai> — public. ⚠️ **The repo name is missing the `t`** ("featherweigh"), while the project, the local folder, and the docs all say *featherweight*. Not yet renamed; GitHub redirects after a rename, so the fix stays cheap until the URL is cited in the paper or an HF model card. `gh` CLI is **not** installed; pushes use stored HTTPS credentials.
-
-**Next action:** Milestone B — accept the `nvidia/Cosmos-Reason2-2B` license gate + create an HF token (**blocking, needs user**), then `huggingface-cli login` and write `scripts/infer_local.py`. See `plan.md` §5.
+**Repo:** <https://github.com/AadiPathak23/featherweigh-ai> — public. ⚠️ **The name is missing the `t`** ("featherweigh") while the project, local folder and docs all say *featherweight*. Not yet renamed; GitHub redirects after a rename, so the fix stays cheap until the URL is cited in the paper or an HF model card. `gh` CLI is **not** installed; pushes use stored HTTPS credentials.
 
 ---
 
