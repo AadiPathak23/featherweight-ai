@@ -30,7 +30,8 @@ doesn't do it.*
 
 `torch.cuda.max_memory_allocated()` peak → **2 – 3.5 GB**
 
-<!-- your reasoning, in your own words: why that bucket and not the others? -->
+<!-- your reasoning, in your own words: why that bucket and not the others
+so the thing was if the back propogation comes into play and training and all that comes that the model pushes the output back into the training log so the memory peak would increase by 1-1.5 gb ad that would disrupt everything, that is one issue that would come.-->
 
 
 **What actually happened:**
