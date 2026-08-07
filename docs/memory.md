@@ -8,7 +8,13 @@
 
 ## 1. Current state
 
-**Phase:** Week 1, **Milestone B ✅ COMPLETE** (2026-08-06). Cosmos-Reason2-2B loads in 4-bit on the 6 GB 3060 and produces a correct, on-topic description of a traffic scene. Peak **2.10 GiB** vs the <5.0 GB target. Latency **7–10 tok/s** (the edge-target figure for Week 5). Details in §3.
+**Phase:** ✅ **WEEK 1 COMPLETE** (2026-08-07). Milestones A, B and C all passed. Local env works, the model runs in 4-bit on the 6 GB card, and the local→GitHub→Kaggle bridge is proven: `scripts/check_env.py` runs **unmodified** on Windows/py3.13/torch2.13/cu130/sm_86 **and** Linux/py3.12/torch2.10/cu128/sm_75, reporting correct — and different — facts on each.
+
+**Next action:** Week 2 — Metropolis dataset survey (`plan.md` §8), lock the eval protocol and metrics, and build the fp16-stability harness (loss-scale monitoring + NaN tripwire).
+
+⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
+
+**Milestone B ✅ COMPLETE** (2026-08-06). Cosmos-Reason2-2B loads in 4-bit on the 6 GB 3060 and produces a correct, on-topic description of a traffic scene. Peak **2.10 GiB** vs the <5.0 GB target. Latency **7–10 tok/s** (the edge-target figure for Week 5). Details in §3.
 
 **Next action:** Milestone C — Kaggle account + phone verification, T4 x2 notebook, HF token in Secrets, `git clone` + run `check_env.py` unmodified. See `plan.md` §5.
 
@@ -43,11 +49,15 @@
 
 | Item | Value |
 |---|---|
-| GPUs offered | **T4 x2** (16 GB each, sm_75) or **P100** (16 GB, sm_60) |
+| GPUs offered | **T4 x2** (sm_75) or **P100** (sm_60) |
+| ✅ **Measured** (2026-08-07) | 2 × Tesla T4, `capability=(7, 5)`, **14.6 GiB each** — not the 16 GB on the spec sheet. Budget against 14.6. |
+| ✅ **Kaggle stack** | `torch 2.10.0+cu128`, CUDA **12.8** — differs from local `2.13.0+cu130`, hence a separate `requirements-kaggle.txt` (Week 3). |
 | Quota | ~**30 GPU-hr/week**, **12 hr** max session |
 | Choice | **T4 x2.** P100 is a trap: sm_60 has no fp16 tensor cores, and `LLM.int8()` requires sm_75+ |
-| **bf16** | ❌ **Not supported in hardware on either.** See §5. |
-| Account status | Not yet created (Milestone C) — **phone verification required** to unlock GPU + internet |
+| **bf16** | ❌ **CONFIRMED ABSENT IN HARDWARE, measured on a live T4 2026-08-07.** See the trap below and §5. |
+| Account status | ✅ Created + phone-verified (2026-08-07), email `aadipathak2323@gmail.com`. Environment set to **pin to original** so the base image can't drift mid-benchmark. |
+| ✅ Kaggle runtime | **Linux, Python 3.12.13** (local is Windows/3.13.0) — the same `check_env.py` runs unmodified on both. |
+| ✅ CUDA-context overhead | Only **0.10–0.20 GiB** per T4, vs **~1.0 GiB** on the Windows 3060. Usable headroom is really ~5.0 GiB local vs ~14.4 GiB Kaggle. |
 
 ### Constraints
 
@@ -128,9 +138,23 @@ safetensors==0.8.0           numpy==2.4.4              pillow==12.2.0
 
 ## 5. Known risks
 
+### 🚨 The bf16 trap — measured on a live T4, 2026-08-07
+
+```
+torch 2.10.0+cu128, CUDA 12.8, Tesla T4, capability=(7, 5)
+
+is_bf16_supported()                          = True    <-- LIES (fp32 emulation)
+is_bf16_supported(including_emulation=False) = False   <-- truth
+capability >= (8, 0)                         = False   <-- the hardware reason
+```
+
+**Never call `torch.cuda.is_bf16_supported()` without `including_emulation=False`.** Bare, it reports `True` on a T4 because PyTorch will emulate bf16 through fp32 — functional, slow, and none of the benefit. Trusting it would make this project's central constraint look imaginary.
+
+**It is silicon, not software.** Kaggle runs CUDA **12.8** — nearly current — and still has no bf16, while the local 3060 (`sm_86`, Ampere) has it on a *different* CUDA. bf16 tensor cores arrived with **Ampere (sm_80, 2020)**; the T4 is **Turing (sm_75, 2018)**. No driver, toolkit or torch upgrade can add it. This is why every training run here is fp16 — permanently, not pending a fix.
+
 | Risk | Severity | Notes / mitigation |
 |---|---|---|
-| **No bf16 on free Kaggle** | 🔴 **Highest** | T4 = sm_75, P100 = sm_60 → no hardware bf16, but the model card says BF16 required. All training must be **fp16** (`bnb_4bit_compute_dtype=torch.float16`, AMP + GradScaler, fp32 master weights). **The ViT tower is the usual overflow site.** Stability harness = Week 2 deliverable. Confirmed empirically in Milestone C step 4. |
+| **No bf16 on free Kaggle** | 🔴 **Highest** | T4 = sm_75, P100 = sm_60 → no hardware bf16, but the model card says BF16 required. All training must be **fp16** (`bnb_4bit_compute_dtype=torch.float16`, AMP + GradScaler, fp32 master weights). **The ViT tower is the usual overflow site.** Stability harness = Week 2 deliverable. ✅ **Confirmed empirically on live hardware 2026-08-07** — see the trap above. |
 | transformers 5.x breakage | 🟠 | Pinned to `<5` on purpose. Upgrade is a separate verified task. |
 | Model is gated | 🟡 | One-click accept, `gated: auto`. Token needed locally *and* in Kaggle Secrets. Blocks Milestone B. |
 | 6 GB inference headroom | 🟡 | Cap `max_pixels`. Close Epic Games Launcher. Target peak < 5.0 GB. |
@@ -179,3 +203,8 @@ safetensors==0.8.0           numpy==2.4.4              pillow==12.2.0
   - **Instrumentation bug found and fixed — carries forward.** `max_memory_allocated()` is a high-water mark that never decreases, so reading it at successive checkpoints *without* `reset_peak_memory_stats()` reports every later phase as the earliest spike and makes all phase deltas zero. `vram()` now resets after each read. **Every future VRAM measurement must do this**, or the Week 4/5 benchmark columns will be silently wrong.
   - `transformers` 4.57 deprecates `torch_dtype=` in favour of `dtype=`.
   - Benign Windows warnings, non-blocking: HF cache symlinks unavailable (more disk used), `hf_xet` missing (slower downloads), `triton` missing.
+- **2026-08-07 — Milestone C ✅ PASSED. Week 1 complete.** Kaggle account created + phone-verified; notebook on **T4 x2** with internet on, environment **pinned**; `HF_TOKEN` supplied via Add-ons → Secrets. `notebooks/kaggle_smoke_test.ipynb` cloned the repo and ran `scripts/check_env.py` **unmodified** → PASS: `device_count=2`, 2 × Tesla T4, `capability=(7, 5)`, 14.56 GiB each, `bf16_supported=False`, `bf16_native=False`, bitsandbytes 0.50.0 `Linear4bit` nf4 forward pass OK.
+  - **The bf16 trap was caught live:** bare `is_bf16_supported()` returned **True** on the T4 while `including_emulation=False` returned **False**. Had the notebook printed only the bare call, the project's central constraint would have looked imaginary. See §5.
+  - **Silicon, not software — settled empirically.** Kaggle runs CUDA 12.8 (near-current) and still has no bf16; the local 3060 has it on a different CUDA. The variable is compute capability (sm_75 Turing vs sm_86 Ampere), nothing installable.
+  - Kaggle stack: Linux, Python 3.12.13, torch 2.10.0+cu128. bitsandbytes installs cleanly via `pip install -q bitsandbytes` (not in the base image).
+  - A token was leaked into a notebook cell and revoked immediately; see the security note in §1.
