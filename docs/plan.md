@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
-> Living document. Update as decisions land. Companion file: [`memory.md`](./memory.md) (state + environment facts).
-> Last updated: 2026-07-28
+> Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
+> Last updated: 2026-08-07 · **Week 1 complete; Week 2 is next (§5, Milestones D–F).**
 
 ---
 
@@ -67,13 +67,21 @@ Rules:
 
 ## 5. Roadmap
 
-### Week 1 — foundations *(detailed)*
+### Week 1 — foundations ✅ **COMPLETE (2026-08-07)**
 
-Three ordered milestones. Each is small and independently verifiable.
+Three ordered milestones, all passed. Detail kept below as a record — the documented risks and how they actually resolved are worth preserving.
+
+| Milestone | Result |
+|---|---|
+| **A** — local env | ✅ Passed 2026-07-28. All three "🟢" risks closed by evidence: bitsandbytes installs plainly on Windows, cu130 had cp313 wheels, whole stack built on Python 3.13. Both fallbacks unused. |
+| **B** — 4-bit local inference | ✅ Passed 2026-08-06. Peak **2.10 GiB** vs <5.0 GB target; correct traffic-scene answer; **7–10 tok/s**. |
+| **C** — Kaggle bridge | ✅ Passed 2026-08-07. `check_env.py` runs unmodified from a clone on T4 x2. **bf16 confirmed absent in hardware.** |
+
+Measured numbers live in [`memory.md`](./memory.md) §2–3; that file is authoritative over anything restated here.
 
 ---
 
-#### Milestone A — Local environment sanity check
+#### Milestone A — Local environment sanity check ✅
 
 **Goal:** a reproducible venv where torch sees the 3060 and bitsandbytes actually quantizes on it.
 
@@ -98,13 +106,13 @@ Three ordered milestones. Each is small and independently verifiable.
 
 ---
 
-#### Milestone B — Load Cosmos-Reason2-2B in 4-bit locally, single-image inference
+#### Milestone B — Load Cosmos-Reason2-2B in 4-bit locally, single-image inference ✅
 
 **Goal:** prove the exact model we're finetuning runs on 6 GB, so local iteration is real, not aspirational.
 
 **Steps**
 1. **Accept the license gate** (blocking, ~30 s): log in to huggingface.co → open `nvidia/Cosmos-Reason2-2B` → *Agree and access repository*. Gate is `auto`, so access is granted immediately.
-2. Create an HF token → `huggingface-cli login`. Same token later goes into Kaggle Secrets.
+2. Create an HF token → `hf auth login` (`huggingface-cli` is deprecated in `huggingface_hub` ≥0.34). Same token later goes into Kaggle Secrets. **Note: a valid token is not enough — gate acceptance is separate, and a token alone returns 403.**
 3. `scripts/infer_local.py` — `Qwen3VLForConditionalGeneration.from_pretrained(...)` with:
    ```python
    BitsAndBytesConfig(
@@ -114,7 +122,8 @@ Three ordered milestones. Each is small and independently verifiable.
        bnb_4bit_compute_dtype=torch.float16,   # fp16, not bf16 — match Kaggle
    )
    ```
-   - **Critical for 6 GB:** cap vision tokens via the processor's `min_pixels`/`max_pixels` (start low, e.g. `max_pixels ≈ 256*28*28`). Unbounded image resolution is what OOMs you — not the weights.
+   - **Critical for 6 GB:** cap vision tokens via the processor's `min_pixels`/`max_pixels`. ⚠️ **`256*28*28` was wrong** — that is Qwen2-VL geometry. Qwen3-VL uses patch 16 + merge 2 = **1024 px per vision token**. Derive it at runtime from `processor.image_processor.patch_size`/`.merge_size`; never hardcode.
+   - *Measured outcome:* capping barely mattered at inference — 247 vision tokens cost **+0.01 GiB**. The activation risk is real but lands in **training**, where activations are retained for the backward pass.
    - `max_new_tokens` ~128–256 for a smoke test (the card suggests 4096 for full reasoning traces).
 4. Run on one image with a simple scene-reasoning prompt. Log `torch.cuda.max_memory_allocated()`.
 5. **Close Epic Games Launcher and other GPU consumers first** — 426 MiB is gone before we even start.
@@ -131,7 +140,7 @@ Model loads in 4-bit, emits a coherent on-topic answer about the image, **peak a
 
 ---
 
-#### Milestone C — Kaggle account + one trivial GPU notebook
+#### Milestone C — Kaggle account + one trivial GPU notebook ✅
 
 **Goal:** demystify the cloud environment *before* anything depends on it. Deliberately trivial — this is a confidence milestone.
 
@@ -139,7 +148,8 @@ Model loads in 4-bit, emits a coherent on-topic answer about the image, **peak a
 1. Create a free Kaggle account → **complete phone verification**. GPU + internet stay locked until you do. This is the #1 first-timer stumble.
 2. New Notebook → right sidebar → **Accelerator: GPU T4 x2** → **Internet: On**.
 3. Add HF token via **Add-ons → Secrets**. Verify retrieval with `UserSecretsClient` (not a hardcoded cell).
-4. Run ~10 lines: `!nvidia-smi`, then torch version, device name, `get_device_capability()`, and **`torch.cuda.is_bf16_supported()`** — empirically confirms the bf16 constraint rather than trusting analysis.
+4. Run ~10 lines: `!nvidia-smi`, then torch version, device name, `get_device_capability()`, and **`torch.cuda.is_bf16_supported(including_emulation=False)`** — empirically confirms the bf16 constraint rather than trusting analysis.
+   - 🚨 **The bare call is a trap and was caught live:** `is_bf16_supported()` returned **True** on the T4 (PyTorch emulates bf16 via fp32), while `including_emulation=False` returned **False**. Always pass the argument, or the project's central constraint looks imaginary.
 5. **Test the bridge:** `!git clone <repo>` and run `scripts/check_env.py` unmodified. This is the actual thing being validated.
 6. Locate the GPU-hour meter so the 30 hr/week budget is visible from day one.
 
@@ -155,9 +165,82 @@ A saved notebook that prints two T4s from `nvidia-smi`, reports `capability=(7, 
 
 ---
 
-### Weeks 2+ *(outline)*
+### Week 2 — dataset, protocol, stability *(next — detailed)*
 
-- **W2** — Metropolis dataset survey → shortlist of 2–3 (criteria in §8); lock eval protocol & metrics; build the fp16-stability harness (loss-scale monitoring, NaN tripwire)
+Character shift: Week 1 was plumbing with binary pass/fail. Week 2 is **judgment**, and the decisions made here determine whether the benchmark is defensible. Three milestones, ordered by what blocks what.
+
+---
+
+#### Milestone D — Metropolis dataset shortlist
+
+**Goal:** 2–3 candidate datasets meeting the §8 criteria, with a recommendation and a stated fallback.
+
+**Steps**
+1. Survey Metropolis-aligned VQA datasets — smart-city / traffic / surveillance / industrial-safety. **Not** robotics/embodied (D5).
+2. For each candidate report: exact size · license (must allow research use **and** redistribution of results) · access method (flag gated/application-required) · annotation format · iteration speed.
+3. Verify each claim against the actual dataset page or paper. **No sizes or licenses from recall** — this is the single most common place to get burned.
+4. Download the smallest candidate and eyeball ~20 examples. A dataset that looks right on paper and wrong in practice is the normal failure.
+5. Recommend one, name a fallback, record both in `memory.md` with the reasoning.
+
+**✅ Success criterion**
+A written shortlist with verified size/license/access per candidate, one recommendation, one fallback, and ~20 examples actually inspected.
+
+**Risks**
+- Nothing fits → widen to generic urban-scene VQA and lean harder on the *method* narrative than the domain one
+- Everything good is gated or application-walled → check access **before** falling in love with a dataset
+- Too large for free Kaggle → bias to the smallest viable set, per §8; subsample rather than abandon
+- Annotations are captions, not QA pairs → either reformulate into VQA or drop it; decide deliberately, not silently
+
+---
+
+#### Milestone E — Eval protocol *(the one that decides defensibility)*
+
+**Goal:** a frozen, written definition of how accuracy is computed — locked before any training run exists to be tempted by.
+
+**Why it matters:** the model emits reasoning traces, not labels. "Accuracy" is therefore a *choice*, and choosing it after seeing results is how benchmarks become dishonest. This is open question #6.
+
+**Steps**
+1. Decide the answer-extraction rule: exact-match on a final answer (constrained output format) vs. a judged protocol. Trade-off: exact-match is cheap and reproducible but punishes correct answers that are formatted oddly; judging is fairer but needs a judge, which costs money or reproducibility.
+2. Fix the **prompt template**, decoding parameters (greedy, `do_sample=False`) and `max_new_tokens`. These are part of the protocol — changing them mid-benchmark invalidates comparisons.
+3. Fix the eval split and **freeze it**. Never evaluate on anything touched during training.
+4. Write `src/eval.py` implementing exactly this, plus a results schema (JSON per run: config + metrics + timings + git SHA).
+5. Baseline it: run zero-shot Cosmos-Reason2-2B through the harness end to end. That is benchmark row 1 and it validates the harness before any adapter exists.
+
+**✅ Success criterion**
+`src/eval.py` produces a scored zero-shot number on the frozen eval split, written to a results file, reproducible across two runs with identical output.
+
+**Risks**
+- Protocol drift → freeze it in writing, in the repo, and treat changes as a documented decision
+- Reasoning traces defeat exact-match → constrain the output format in the prompt and report the extraction-failure rate as its own metric
+- Judged protocol adds cost/nondeterminism → if used, pin the judge and publish the judge prompt
+- Eval too slow to iterate → subsample a fixed dev subset for iteration, keep the full split for final numbers only
+
+---
+
+#### Milestone F — fp16 stability harness
+
+**Goal:** detect divergence early and automatically, **before** Week 3 depends on it. This is insurance against the project's highest risk.
+
+**Steps**
+1. Log per step: loss, grad-norm, and the live `GradScaler` scale factor.
+2. **NaN/Inf tripwire** — halt immediately on non-finite loss or grad-norm, and dump the step index plus the offending module. A run that silently NaNs and trains to completion on garbage is the expensive failure.
+3. Watch the scaler: repeated halving means recurring overflow. Log every scale change rather than only the final value.
+4. Instrument the **vision tower separately** — it is the documented overflow site; per-module grad-norms make that visible instead of inferred.
+5. Prepare the mitigation ladder in advance so it isn't invented under pressure: lower initial scale → fp32 vision tower → lower LR → gradient clipping.
+6. **Reuse `vram()` from `scripts/infer_local.py`**, including its `reset_peak_memory_stats()` — without the reset, phase deltas silently read zero and the Week 4/5 VRAM columns become wrong.
+
+**✅ Success criterion**
+A short deliberately-unstable run (inflated LR) trips the tripwire and halts with a useful diagnostic, rather than producing quiet garbage.
+
+**Risks**
+- Harness itself perturbs timing → keep logging cheap; wall-clock is a benchmark column and must stay honest
+- Tripwire too sensitive → occasional scaler halving is *normal*; alert on sustained patterns, not single events
+- fp16 turns out to be unfixable → escalation path in open question #3: fp32 vision tower, tighter scaling, or a supplementary bf16-capable free tier with Kaggle still primary
+
+---
+
+### Weeks 3+ *(outline)*
+
 - **W3** — first end-to-end QLoRA run on Kaggle; checkpoint/resume across the 12 hr cap; eval harness green
 - **W4** — DoRA + LoRA runs under matched VRAM/wall-clock budgets; seed variance; ViT-quantization ablation
 - **W5** — latency/VRAM measurement on the 3060 as the *edge target*; adapter merge + 4-bit inference profiling
@@ -184,8 +267,10 @@ Budget matching: runs are compared at equal wall-clock *and* equal peak VRAM, no
 
 ## 7. Key technical constraints
 
-### 🚨 No bfloat16 on free Kaggle
-T4 = Turing (sm_75), P100 = Pascal (sm_60). **Neither has hardware bf16.** The Cosmos model card says BF16 is required. Therefore every training run uses **fp16**: `bnb_4bit_compute_dtype=torch.float16`, fp16 AMP + GradScaler, fp32 master weights. Qwen-VL-family QLoRA on T4 is widely done, but **the ViT tower is the usual overflow site**. Mitigation harness is a Week 2 deliverable.
+### 🚨 No bfloat16 on free Kaggle — ✅ **CONFIRMED ON LIVE HARDWARE 2026-08-07**
+T4 = Turing (sm_75), P100 = Pascal (sm_60). **Neither has hardware bf16.** The Cosmos model card says BF16 is required.
+
+Measured on a Kaggle T4: bare `is_bf16_supported()` → **True** (fp32 emulation), `including_emulation=False` → **False**, `capability=(7, 5)`. Kaggle runs CUDA **12.8** and still has no bf16, while the local sm_86 3060 has it on a different CUDA — so this is **silicon, not software**, and no upgrade fixes it. Therefore every training run uses **fp16**: `bnb_4bit_compute_dtype=torch.float16`, fp16 AMP + GradScaler, fp32 master weights. Qwen-VL-family QLoRA on T4 is widely done, but **the ViT tower is the usual overflow site**. Mitigation harness is a Week 2 deliverable.
 
 ### transformers 4.5x vs 5.x
 PyPI latest is **5.14.1**, a major release with breaking changes. Every Cosmos/Qwen3-VL example targets `>=4.57`. We pin `>=4.57,<5` deliberately. Upgrading to 5.x is a separate, individually-verified task — **the pin is not staleness**.
@@ -211,14 +296,15 @@ Shortlist **2–3** candidates, Metropolis-aligned (smart-city / traffic / surve
 
 ## 9. Open questions
 
-**Blocking Milestone B (needs user, ~2 min)**
-1. Accept the `nvidia/Cosmos-Reason2-2B` license gate on HF + create an access token
+**✅ Resolved**
+1. ~~Accept the license gate + create a token~~ — done 2026-08-06. Learned: **gate acceptance ≠ authentication**; a valid token alone still 403s.
+3. ~~Is fp16-only training really forced?~~ — **Yes, settled on live hardware 2026-08-07.** T4 is sm_75 Turing; bf16 tensor cores arrived with Ampere (sm_80). Kaggle runs CUDA 12.8 and still lacks it, so it is silicon, not software. *Escalation if W3 proves unstable:* fp32 vision tower, tighter loss scaling, or a free Ada-class tier (L4 has bf16) as a **supplementary** runner — Kaggle stays primary.
 
-**Resolve during Week 1**
-2. transformers 4.5x vs 5.x — starting on 4.5x; revisit as a deliberate upgrade
-3. fp16-only training — confirmed empirically by Milestone C step 4. If unstable in W3: fp32 vision tower, tighter loss scaling, or a free Ada-class tier (L4 has bf16) as a *supplementary* runner. Kaggle stays primary.
+**Still open**
+2. transformers 4.5x vs 5.x — on 4.57.6; upgrade is a separate, individually-verified task. Note `huggingface_hub` is pinned `<1.0` **because** of this, so the two move together.
 4. Vision-tower quantization policy — quantize the ViT or keep it fp16? Affects accuracy *and* the VRAM story. Decide with data in W4.
+6. **Eval metric definition** — exact-match on final answer vs. judged protocol. Now Milestone E, and **must be frozen before any training run exists to tempt post-hoc choices**.
+7. **New (from Milestone B):** `embed_tokens` is 311.2M params left in fp16 ≈ 622 MB = **42% of resident weights**, tied to `lm_head`. Is quantizing or shrinking the embedding table a legitimate lever for the edge story, or does it wreck quality? Nobody benchmarks this. Potentially a genuine contribution — worth a W4/W5 ablation.
 
 **Week 2**
-5. Metropolis dataset shortlist (§8)
-6. Eval metric definition — reasoning-trace outputs need either exact-match-on-final-answer or a judged protocol. Choice affects reproducibility claims.
+5. Metropolis dataset shortlist (§8) → Milestone D.

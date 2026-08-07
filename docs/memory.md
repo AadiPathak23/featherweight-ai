@@ -1,6 +1,8 @@
 # featherweight-ai — Memory / Context Log
 
-> **Re-read this file first** to regain context in a new session. Companion: [`plan.md`](./plan.md) (roadmap).
+> **Re-read this file first** to regain context in a new session. Companions: [`plan.md`](./plan.md) (roadmap; Week 2 = Milestones D–F) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
+>
+> 🧭 **How we work — read before doing anything.** Aadi is deliberately working above his current level and wants to *learn*, not receive finished code. Per milestone: **frame** briefly → **Aadi writes a prediction before anything runs** → **build in small pieces**, explaining each non-obvious decision where it appears → **reconcile** prediction vs reality, digging hardest where he was wrong → **Aadi logs it in his own words**. Label each thing **Tier 1** (learn deeply: LoRA/DoRA math, quantization, fp16 stability, experiment design), **Tier 2** (know the shape: HF/PEFT APIs), or **Tier 3** (plumbing: venv, git, Kaggle UI). No black boxes — every flag and magic number gets a reason. Say plainly what is measured fact vs. estimate vs. untested bet. Where he can reason it out, ask and wait. One milestone per session; depth over throughput.
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
 > Last updated: 2026-08-07
 
