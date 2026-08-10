@@ -36,8 +36,74 @@ so the thing was if the back propogation comes into play and training and all th
 
 **What actually happened:**
 
-<!-- fill in after we run it -->
+<!-- Measured: peak 2.10 GiB, resident weights 1.47 GiB. Your BUCKET was right.
+     But read your reasoning above again — it was about backprop and training.
+     This run had no backward pass at all. The peak came from somewhere else.
+     In your own words: where did the 2.10 GiB actually come from? -->
+
 
 **What I understand now:**
 
-<!-- fill in after we run it -->
+<!-- Three things worth reaching for, in your own words:
+     1. Why does peak VRAM happen at LOAD rather than during generation?
+     2. Activations cost +0.01 GiB here. Why will that number be completely
+        different during training, and what changes?
+     3. max_memory_allocated() is a high-water mark. What breaks if you read it
+        at several checkpoints without reset_peak_memory_stats() in between? -->
+
+
+---
+
+## Milestone C — Kaggle bridge (2026-08-07)
+
+*Mostly Tier 3 plumbing, but one Tier 1 idea hides in it.*
+
+**What actually happened:**
+
+<!-- The same check_env.py ran unmodified on both machines and reported
+     different, correct facts. And the bf16 trap fired live. -->
+
+
+**What I understand now:**
+
+<!-- The one that matters: torch.cuda.is_bf16_supported() returned True on the
+     T4 and False with including_emulation=False. In your own words —
+     why does torch say True when the hardware cannot do it, and what would
+     have happened to this project if the notebook had only printed the
+     bare call? -->
+
+
+---
+
+## Milestone D — dataset (2026-08-10)
+
+*No prediction was committed before this one — worth noticing why that
+happened, and whether it should have.*
+
+**What I decided, and why:**
+
+<!-- You made two calls that changed the project's direction:
+     1. You killed the build-your-own-dataset plan on scope grounds.
+        Write the argument in your own words — why does a second contribution
+        WEAKEN a paper rather than strengthen it?
+     2. You insisted on image before video. What did that ordering actually
+        buy us, concretely, in this session? -->
+
+
+**What surprised me:**
+
+<!-- Candidates: the dataset's real images are 224x224 despite nuScenes being
+     1600x900; the published 19.8 GB is ~87 MB of stuff we need; the blended
+     35.7% hid binary 67.2% vs open-ended 11.4%. Which of these would you have
+     caught by reading the dataset card? -->
+
+
+**What I understand now:**
+
+<!-- Reach for the general rule, not the specific fact:
+     1. Why is a majority-class baseline (22.9%) worth computing BEFORE any
+        model runs?
+     2. Why were the pass/fail thresholds written into the script before it
+        ran, rather than judged after seeing 35.7%?
+     3. The model answers 'bike' when the gold answer is 'bicycle'. Finetuning
+        will fix that fast. Why is that a REPORTING problem and not a win? -->

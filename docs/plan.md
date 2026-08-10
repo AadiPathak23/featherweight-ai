@@ -195,11 +195,25 @@ A written shortlist with verified size/license/access per candidate, one recomme
 
 ---
 
-#### Milestone E — Eval protocol *(the one that decides defensibility)*
+#### Milestone E — Eval protocol *(the one that decides defensibility)* ← **NEXT**
 
 **Goal:** a frozen, written definition of how accuracy is computed — locked before any training run exists to be tempted by.
 
 **Why it matters:** the model emits reasoning traces, not labels. "Accuracy" is therefore a *choice*, and choosing it after seeing results is how benchmarks become dishonest. This is open question #6.
+
+**What Milestone D already settled — start from here, do not re-derive:**
+
+- **The judge-vs-exact-match question is closed.** The answer space is a **closed 29-class vocabulary**, so exact-match on a normalized answer works. No judge, no cost, no nondeterminism.
+- **`scripts/zeroshot_probe.py` is the working skeleton.** Normalize rule, strict/lenient scoring, greedy decoding and the results schema are built and validated.
+- **Determinism is already demonstrated** — two runs reproduced 35.7 / 22.9 / 72.1 exactly. The §E success criterion is half-met before E starts.
+- **Keep scoring strict AND lenient.** They came out identical (35.7% both), which is what proved the low open-ended score was genuine blindness rather than format refusal. Collapsing to one number destroys that diagnostic.
+- **Report format compliance (in-vocabulary %) as its own column.** 72.1% zero-shot. Without it, vocabulary learning masquerades as perception gain — see `memory.md` §6.
+- **Always store the majority-class baseline beside the metric.** 22.9% here.
+
+**Two things E must decide that D deliberately left open:**
+
+1. **Freeze a real eval split.** The probe used only shard 0 of `day-validation` (140 of ~2,229 rows). Pick the split, write it down, never touch it in training.
+2. **Blended or disaggregated accuracy?** Binary yes/no scores **67.2%** while open-ended collapses to **11.4%**. If the five methods cannot be separated on open-ended questions, report the two as **separate benchmark columns** rather than one average that hides the split.
 
 **Steps**
 1. Decide the answer-extraction rule: exact-match on a final answer (constrained output format) vs. a judged protocol. Trade-off: exact-match is cheap and reproducible but punishes correct answers that are formatted oddly; judging is fairer but needs a judge, which costs money or reproducibility.
@@ -312,9 +326,11 @@ PyPI latest is **5.14.1**, a major release with breaking changes. Every Cosmos/Q
 
 **Still open**
 2. transformers 4.5x vs 5.x — on 4.57.6; upgrade is a separate, individually-verified task. Note `huggingface_hub` is pinned `<1.0` **because** of this, so the two move together.
+8. **New (from Milestone D):** how much of the finetuning gain is **output-vocabulary alignment** rather than improved perception? 39 of 90 zero-shot errors are right-idea-wrong-word. Mitigated by reporting format compliance as its own column, but the split needs quantifying once adapters exist — and it is interesting in its own right.
+9. **New (from Milestone D):** open-ended accuracy is **11.4%** at 224×224. If the five methods cannot be separated there, does the benchmark report binary and open-ended separately, or does the low ceiling invalidate the open-ended column? Decide with W3 data, not now.
 4. Vision-tower quantization policy — quantize the ViT or keep it fp16? Affects accuracy *and* the VRAM story. Decide with data in W4.
 6. **Eval metric definition** — exact-match on final answer vs. judged protocol. Now Milestone E, and **must be frozen before any training run exists to tempt post-hoc choices**.
 7. **New (from Milestone B):** `embed_tokens` is 311.2M params left in fp16 ≈ 622 MB = **42% of resident weights**, tied to `lm_head`. Is quantizing or shrinking the embedding table a legitimate lever for the edge story, or does it wreck quality? Nobody benchmarks this. Potentially a genuine contribution — worth a W4/W5 ablation.
 
-**Week 2**
-5. Metropolis dataset shortlist (§8) → Milestone D.
+**✅ Resolved (cont.)**
+5. ~~Metropolis dataset shortlist (§8)~~ — **done 2026-08-10, Milestone D.** `nuscenes-qa-mini`, fallback SUTD-TrafficQA. Learned: the intersection of {US-collected, image-based, ungated, ready-made QA, roadside} is **empty** in the public landscape — that is a reportable finding, not a failed search.

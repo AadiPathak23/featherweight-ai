@@ -8,24 +8,66 @@
 
 ---
 
-## 1. Current state
+## 1. START HERE — session resume
 
-**Phase:** ✅ **WEEK 1 COMPLETE** (2026-08-07). Milestones A, B and C all passed. Local env works, the model runs in 4-bit on the 6 GB card, and the local→GitHub→Kaggle bridge is proven: `scripts/check_env.py` runs **unmodified** on Windows/py3.13/torch2.13/cu130/sm_86 **and** Linux/py3.12/torch2.10/cu128/sm_75, reporting correct — and different — facts on each.
+### 🔖 Where we left off — end of session 2026-08-10
 
-**Next action:** ✅ **Milestone D COMPLETE (2026-08-10)** — dataset is `nuscenes-qa-mini`, verified by zero-shot probe (§6). Next is **Milestone E — freeze the eval protocol**: the extraction rule, prompt template, decoding params and eval split, written down *before* any adapter exists. `scripts/zeroshot_probe.py` is the skeleton; `src/eval.py` is the deliverable. Then Milestone F (fp16 stability harness).
-⚠️ **Owed:** `learning-log.md` has no Milestone B/C/D entries — the reconcile step of the working protocol (§1) has not been closed since 2026-07-28.
+**Milestone D is complete. The dataset question is settled.**
+
+Last session ran the Week 2 dataset survey end to end. Ten candidates checked against their real pages (not recall), then the winner verified by **running the model**, not by reading a dataset card.
+
+- **Dataset chosen:** [`KevinNotSmile/nuscenes-qa-mini`](https://huggingface.co/datasets/KevinNotSmile/nuscenes-qa-mini) · fallback SUTD-TrafficQA · full record in **§6**
+- **Verified by measurement:** zero-shot Cosmos-Reason2-2B scored **35.7%** strict exact-match vs a **22.9%** majority-class baseline (+12.9 pp) on 140 validation rows. The dataset can rank methods. It is not a floor.
+- **New decisions locked:** **D7** (US-collected, image before video), **D8** (we do not build our own dataset), **D9** (gated datasets disqualified as primary) — all in §7
+- **Repo renamed** `featherweigh-ai` → `featherweight-ai`; remote and Kaggle clone URL both updated
+- **`results/` convention established** — tracked run records with `git_sha`; see `results/README.md`
+
+**The two things last session found that are easy to forget and expensive to rediscover:**
+
+1. **The images are 224×224**, not nuScenes' native 1600×900. Binary yes/no questions score **67.2%** (chance 50%) while open-ended ones collapse to **11.4%**. The blended 35.7% hides this completely — *always disaggregate*.
+2. **Much of the coming finetuning gain will be output-vocabulary alignment, not better perception.** 39 of 90 zero-shot errors are the model answering sensibly in the wrong words (`bike`→`bicycle`, `zero`→`0`). Carry format-compliance as its own benchmark column so the two effects stay separable, and do not report the jump as a perception win.
+
+### ▶️ Next action — Milestone E, freeze the eval protocol
+
+**Do this first, before any adapter exists to tempt a post-hoc metric choice.** Write down and freeze: the answer-extraction rule, the prompt template, decoding params (greedy, `do_sample=False`), `max_new_tokens`, and the eval split. Then build `src/eval.py`.
+
+- **Start from `scripts/zeroshot_probe.py`** — it is already most of the skeleton. Strict/lenient scoring, the normalize rule, the results schema and greedy decoding are all in place and working.
+- **Already banked:** re-running the probe reproduced **35.7 / 22.9 / 72.1 exactly**, so Milestone E's "identical across two runs" criterion is demonstrated for this harness.
+- **Still to decide:** how to freeze a proper eval split (the probe used only shard 0 of `day-validation`, 140 of ~2,229 rows), and whether to report binary and open-ended as separate columns rather than one blended accuracy.
+
+Then **Milestone F** — fp16 stability harness (NaN/Inf tripwire, loss-scale monitoring, per-module vision-tower grad-norms).
+
+### ⚠️ Owed
+
+- **`learning-log.md` has no entries for Milestones B, C or D.** The reconcile step of the working protocol below has not been closed since 2026-07-28. Milestone B's prediction bucket (2–3.5 GB) was right but the *reasoning* was about backprop, while the real peak came from load-time unpacking — that gap is the entry worth writing.
+
+### 📁 Repo map
+
+| Path | What it is |
+|---|---|
+| `scripts/check_env.py` | Milestone A. Runs unmodified on both local and Kaggle; reports `bf16_supported` vs `bf16_native` separately |
+| `scripts/infer_local.py` | Milestone B. 4-bit load + single-image inference. **Source of the `vram()` reset discipline — reuse it** |
+| `scripts/inspect_dataset.py` | Milestone D. Pulls ONE 457 MB shard, reports schema/QA/storage; dumps images to `outputs/dataset_peek/` |
+| `scripts/zeroshot_probe.py` | Milestone D go/no-go, and the **Milestone E skeleton** |
+| `results/` | **Tracked** run records, small JSON only. Schema + rules in `results/README.md` |
+| `outputs/` | **Gitignored** scratch — images, dumps, anything regenerable |
+| `notebooks/kaggle_smoke_test.ipynb` | Milestone C. Thin launcher: clones the repo, runs `check_env.py` |
+
+**Repo:** <https://github.com/AadiPathak23/featherweight-ai> — public. Renamed 2026-08-10 from `featherweigh-ai` (old name was missing the `t`); GitHub redirects the old URL but nothing in the repo relies on that. `gh` CLI is **not** installed; pushes use stored HTTPS credentials. Git identity `AadiPathak23 / aadipathak2323@gmail.com`.
+
+### 🗓️ Milestone board
+
+| | Milestone | Status |
+|---|---|---|
+| **A** | Local env | ✅ 2026-07-28. Venv, pinned stack, `check_env.py` passes on the 3060 |
+| **B** | 4-bit local inference | ✅ 2026-08-06. Peak **2.10 GiB** vs <5.0 GB target; **7–10 tok/s** (the Week 5 edge-target figure) |
+| **C** | Kaggle bridge | ✅ 2026-08-07. T4 x2; `check_env.py` runs unmodified from a clone; **bf16 confirmed absent in hardware** |
+| **D** | Dataset | ✅ 2026-08-10. `nuscenes-qa-mini`, verified by probe (§6) |
+| **E** | Eval protocol | ⬜ **NEXT** |
+| **F** | fp16 stability harness | ⬜ |
+| W3+ | QLoRA run, DoRA/LoRA, edge latency, write-up | ⬜ |
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
-
-**Week 1 milestones** *(detail in the §8 state log)*
-
-| | Result |
-|---|---|
-| **A** — local env | ✅ 2026-07-28. Venv, pinned stack, `check_env.py` passes on the 3060. |
-| **B** — 4-bit local inference | ✅ 2026-08-06. Peak **2.10 GiB** vs <5.0 GB target; correct traffic-scene answer; **7–10 tok/s** (the Week 5 edge-target figure). |
-| **C** — Kaggle bridge | ✅ 2026-08-07. T4 x2, `check_env.py` runs unmodified from a clone; **bf16 confirmed absent in hardware**. |
-
-**Repo:** <https://github.com/AadiPathak23/featherweight-ai> — public. ✅ **Renamed 2026-08-10** from `featherweigh-ai` (the old name was missing the `t`). Local remote re-pointed; the Kaggle clone URL in `notebooks/kaggle_smoke_test.ipynb` updated to match. GitHub redirects the old URL, so any stale link still resolves — but nothing in the repo should rely on that. `gh` CLI is **not** installed; pushes use stored HTTPS credentials.
 
 ---
 
