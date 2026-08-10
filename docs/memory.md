@@ -25,7 +25,7 @@
 | **B** — 4-bit local inference | ✅ 2026-08-06. Peak **2.10 GiB** vs <5.0 GB target; correct traffic-scene answer; **7–10 tok/s** (the Week 5 edge-target figure). |
 | **C** — Kaggle bridge | ✅ 2026-08-07. T4 x2, `check_env.py` runs unmodified from a clone; **bf16 confirmed absent in hardware**. |
 
-**Repo:** <https://github.com/AadiPathak23/featherweigh-ai> — public. ⚠️ **The name is missing the `t`** ("featherweigh") while the project, local folder and docs all say *featherweight*. Not yet renamed; GitHub redirects after a rename, so the fix stays cheap until the URL is cited in the paper or an HF model card. `gh` CLI is **not** installed; pushes use stored HTTPS credentials.
+**Repo:** <https://github.com/AadiPathak23/featherweight-ai> — public. ✅ **Renamed 2026-08-10** from `featherweigh-ai` (the old name was missing the `t`). Local remote re-pointed; the Kaggle clone URL in `notebooks/kaggle_smoke_test.ipynb` updated to match. GitHub redirects the old URL, so any stale link still resolves — but nothing in the repo should rely on that. `gh` CLI is **not** installed; pushes use stored HTTPS credentials.
 
 ---
 
@@ -377,3 +377,7 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
   - **Writing the pass/fail thresholds into the script before running it** (≥10 pp commit, 3–10 pp marginal, <3 pp abort) meant the verdict could not be rationalised after seeing 35.7%. Same discipline Milestone E needs, and cheap to apply.
   - **`strict == lenient` was the check that mattered.** Had lenient run far above strict, the low score would have been a prompt-format problem misdiagnosed as a bad dataset. Scoring only one way would not have distinguished them.
   - Prompt-format lesson: a reasoning-tuned model must be told explicitly to emit *only* the answer, or exact-match scores near zero for reasons unrelated to comprehension. Format compliance still only **72.1%** zero-shot.
+- **2026-08-10 — Repo renamed `featherweigh-ai` → `featherweight-ai`.** Done on GitHub by Aadi; local remote re-pointed with `git remote set-url` and verified against `git ls-remote`. Updated the two places that matter: the current-state URL in §1 and the **clone command in `notebooks/kaggle_smoke_test.ipynb`** — a stale clone URL in the Kaggle bridge would have worked silently via GitHub's redirect and then broken whenever the redirect lapsed.
+  - The Milestone A state-log entry above still shows the old URL. **Left deliberately** — this log is append-only and that URL was correct on 2026-07-28. GitHub redirects it, so it still resolves.
+  - `results/zeroshot_probe.json` records `git_sha` but **not** the remote URL, so no results file needed rewriting. Provenance that captures the commit rather than the hosting location survives a rename.
+  - Fixed while cheap: the name is not yet cited in the paper, an HF model card, or the Kaggle notebook's public URL. After those exist, a rename means chasing citations.
