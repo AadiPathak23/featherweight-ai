@@ -4,7 +4,7 @@
 >
 > 🧭 **How we work — read before doing anything.** Aadi is deliberately working above his current level and wants to *learn*, not receive finished code. Per milestone: **frame** briefly → **Aadi writes a prediction before anything runs** → **build in small pieces**, explaining each non-obvious decision where it appears → **reconcile** prediction vs reality, digging hardest where he was wrong → **Aadi logs it in his own words**. Label each thing **Tier 1** (learn deeply: LoRA/DoRA math, quantization, fp16 stability, experiment design), **Tier 2** (know the shape: HF/PEFT APIs), or **Tier 3** (plumbing: venv, git, Kaggle UI). No black boxes — every flag and magic number gets a reason. Say plainly what is measured fact vs. estimate vs. untested bet. Where he can reason it out, ask and wait. One milestone per session; depth over throughput.
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
-> Last updated: 2026-08-07
+> Last updated: 2026-08-10
 
 ---
 
@@ -12,11 +12,12 @@
 
 **Phase:** ✅ **WEEK 1 COMPLETE** (2026-08-07). Milestones A, B and C all passed. Local env works, the model runs in 4-bit on the 6 GB card, and the local→GitHub→Kaggle bridge is proven: `scripts/check_env.py` runs **unmodified** on Windows/py3.13/torch2.13/cu130/sm_86 **and** Linux/py3.12/torch2.10/cu128/sm_75, reporting correct — and different — facts on each.
 
-**Next action:** Week 2 — Metropolis dataset survey (`plan.md` §8), lock the eval protocol and metrics, and build the fp16-stability harness (loss-scale monitoring + NaN tripwire).
+**Next action:** ✅ **Milestone D COMPLETE (2026-08-10)** — dataset is `nuscenes-qa-mini`, verified by zero-shot probe (§6). Next is **Milestone E — freeze the eval protocol**: the extraction rule, prompt template, decoding params and eval split, written down *before* any adapter exists. `scripts/zeroshot_probe.py` is the skeleton; `src/eval.py` is the deliverable. Then Milestone F (fp16 stability harness).
+⚠️ **Owed:** `learning-log.md` has no Milestone B/C/D entries — the reconcile step of the working protocol (§1) has not been closed since 2026-07-28.
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
 
-**Week 1 milestones** *(detail in the §7 state log)*
+**Week 1 milestones** *(detail in the §8 state log)*
 
 | | Result |
 |---|---|
@@ -169,7 +170,145 @@ capability >= (8, 0)                         = False   <-- the hardware reason
 
 ---
 
-## 6. Key decisions
+## 6. Dataset survey — Milestone D *(verified 2026-08-10)*
+
+✅ **DECIDED:** [`KevinNotSmile/nuscenes-qa-mini`](https://huggingface.co/datasets/KevinNotSmile/nuscenes-qa-mini) · **Fallback:** SUTD-TrafficQA (accepting its gating cost).
+Confirmed by measurement, not metadata — zero-shot **35.7%** vs a **22.9%** majority baseline (see the probe below).
+
+### Revised §8 criteria
+
+The original criteria were re-derived mid-survey after two constraints were added (D7, D8). Hard requirements now:
+
+1. **Ungated + open license** — a gated dataset breaks deliverable #4 ("anyone can re-run for $0"). This is a *reproducibility* argument, not a convenience one, and it is the criterion that eliminated the most candidates.
+2. **Ready-made QA pairs** — no dataset construction (D8).
+3. **Image-based** — video is Week 4+ (D7).
+4. Small enough for free Kaggle.
+5. Traffic/urban domain, US-collected preferred — but **not** at the cost of 1–3.
+6. *Nice-to-have:* published baselines to sanity-check the harness.
+
+### Candidates surveyed
+
+| Candidate | Ungated | Image | QA ready | Verdict |
+|---|---|---|---|---|
+| **nuscenes-qa-mini** | ✅ | ✅ | ✅ | ✅ **recommended** |
+| SUTD-TrafficQA | ❌ Zenodo request form | ❌ video | ✅ | 🟡 fallback |
+| RoadSceneVQA | ❌ **no public release found** | ✅ | ✅ | ❌ best domain fit in the survey, unobtainable |
+| NVIDIA AI City Challenge | ❌ email approval | ❌ video | ✅ | ❌ unbeatable narrative, breaks reproducibility |
+| DriveLM | ❌ "agree to share contact information" | ✅ | ✅ | ❌ also ships no images (4.86 GB = annotations only) |
+| VRU-Accident | ✅ Apache-2.0 | ❌ video | ✅ MCQ | ❌ sources are MM-AU / DADA-2000 / DoTA → **not US footage** |
+| SurveillanceVQA-589K | ✅ MIT | ❌ video | ✅ | ❌ 2.31 GB is annotations only; videos from UCF-Crime etc. Viewer broken. |
+| TU-DAT | ✅ CC-BY-4.0 | ❌ video | ❌ **boxes only** | ❌ roadside CCTV + permissive, but zero QA pairs; also mixes BeamNG.drive *simulation* |
+| InterAct-Video | ❌ Google Form, weekly batch | ❌ video | ✅ | ❌ |
+| Indian Traffic VQA | ✅ CC-BY-4.0, 50.5 MB | ✅ | ✅ | ❌ India-collected (D7); signboard OCR, not reasoning |
+
+### Verified facts — `nuscenes-qa-mini`
+
+| Item | Value | Source |
+|---|---|---|
+| Gated | **False** | HF API `gated: False`, `private: False` |
+| License | **CC-BY-NC-SA-4.0** | HF API tags |
+| Size | **19.8 GB** total; `day-train` alone **7.63 GB** | HF tree API |
+| Format | **Arrow** shards — `day-train`/`day-validation` 16 each, `night-train`/`night-validation` 5 each | HF file listing |
+| **Shard size** | **479 MB** — so inspection needs *one shard*, not the full 19.8 GB | HF tree API |
+| Schema | `token`, `CAM_FRONT`, `CAM_FRONT_RIGHT`, `CAM_BACK_RIGHT`, `CAM_BACK`, `CAM_BACK_LEFT`, `CAM_FRONT_LEFT`, `LIDAR_TOP`, `question`, `answer` | `dataset_info.json` |
+| Splits | day/night × train/validation — a **free robustness axis** for the benchmark table | file listing |
+| Scenes | Boston + Singapore (nuScenes) | nuScenes-QA paper |
+| Answer space | **29 classes, closed** | nuScenes-QA (AAAI 2024) |
+| Baselines | published (arXiv 2305.14836) | HF tags |
+
+**Why the 19.8 GB is not the real cost:** the schema carries **6 camera views + LiDAR**. We need `CAM_FRONT`, `question`, `answer` and nothing else. Preprocess once, drop LiDAR and 5 of 6 views, attach the result as a Kaggle Dataset so it is never re-downloaded per session. ⚠️ *Reduction factor is an estimate until measured on a real shard.*
+
+**Why the closed 29-class answer space matters more than it looks:** it makes Milestone E's hardest problem — scoring free-form reasoning traces — mechanical. Exact-match on a fixed vocabulary + constrained output format, with extraction-failure rate as its own metric. Directly retires the `plan.md` risk *"reasoning traces defeat exact-match"*, and avoids paying for a judge.
+
+### Known weaknesses — accepted deliberately, to be stated in the paper
+
+- **Questions are programmatically generated** from 3D scene annotations → existence / counting / status queries. This is a largely **perception** benchmark being used to evaluate a **reasoning**-specialized model.
+- **Ego-vehicle AV footage, not roadside smart-city.** Weaker Metropolis fit; stretches D5.
+- **Boston + Singapore**, so only partly US-collected.
+- **NC license** — fine for research, blocks commercial use.
+
+*Accepted because the thesis is about finetuning efficiency under matched budgets; the dataset is instrumentation, not the finding (D8). The survey found **no** ungated, reasoning-heavy, US-collected, image-based traffic VQA set — the intersection is empty, and that is itself a reportable survey result.*
+
+### ✅ MEASURED on a real shard *(2026-08-10, `scripts/inspect_dataset.py`, `day-validation/data-00000-of-00016.arrow`)*
+
+| Fact | Value |
+|---|---|
+| Rows per shard | **140** → day-val ≈ 2,240, day-train ≈ 2,240, night ≈ 700 each. **Total ≈ 5,776** |
+| Split counts | ✅ **Reconciled.** The "3,068 total" figure was wrong; ~2,229 day + ~659 night per split is right. |
+| **`CAM_FRONT` resolution** | 🚨 **224×224** — pre-resized for CNN-era models. **nuScenes native is 1600×900.** |
+| Image storage | nested **`int64`** lists (H,W,3) — *not* encoded JPEG/PNG. 8 bytes per value that needs 1. |
+| Waste factor | **22.3×** — 343.9 KB/row as stored vs **15.5 KB/row** as JPEG q92 |
+| **Real size** | **~87 MB** front-camera-only JPEG for the whole dataset, vs 19.8 GB published |
+| Distinct answers (shard) | 24 (paper claims 29 overall) |
+| **Majority-class baseline** | **22.9%** (`yes`). `yes`+`no` = **43.6%** of all answers — the benchmark is largely binary. |
+| Scenes | Boston confirmed visually in the sample (brick rowhouses, US crosswalk markings) |
+
+**Size is a non-issue and always was.** 19.8 GB → ~87 MB after dropping LiDAR + 5 of 6 views and encoding as JPEG. Preprocess once, attach as a Kaggle Dataset.
+
+### 🚨 The 224×224 problem — the real risk, found only by downloading
+
+The §6 recommendation was made on metadata. Inspecting the actual images changes the picture:
+
+- Questions ask about **distant pedestrians, vehicle status, and spatial relations** ("what status is the truck to the front of the with rider thing"). At 224×224, with 1600×900 crushed to square (aspect ratio destroyed), **a human often cannot answer them from the image.**
+- If the *input* cannot support the *question*, every run row collapses toward the 22.9% majority baseline — a **floor effect**. The benchmark then cannot rank QLoRA vs DoRA vs LoRA, which is the entire thesis.
+- This dataset was packaged for **ResNet-era 224×224 CNN pipelines**, not for a VLM. Cosmos-Reason2's perception capacity is wasted on it.
+
+**Not yet fatal, but unproven.** Coarse questions ("are there any barriers?") may survive the resolution loss. The cheap decider is empirical, not analytical: **run zero-shot Cosmos-Reason2 on ~100 examples and compare against the 22.9% majority baseline.** Meaningfully above → the dataset discriminates, commit. At or near chance → floor effect confirmed, switch.
+
+### Confirmed weaknesses
+
+- ✅ **Questions are templated and perception-only** — confirmed by reading them. Existence, counting, status, spatial relations, generated from scene graphs. Phrasing is stilted ("the with rider thing"). No causal or predictive reasoning anywhere in the sample.
+
+### ✅ RESOLVED — zero-shot probe *(2026-08-10, `scripts/zeroshot_probe.py`)*
+
+**Verdict: the floor effect does NOT bite. The dataset discriminates. Milestone D closed, `nuscenes-qa-mini` committed.**
+
+Cosmos-Reason2-2B, 4-bit NF4, greedy, `max_new_tokens=48`, all **140 rows** of `day-validation` shard 0:
+
+| Metric | Value |
+|---|---|
+| **Zero-shot strict exact-match** | **35.7%** |
+| Majority-class baseline | 22.9% (`yes`) |
+| **Delta over baseline** | **+12.9 pp** |
+| Lenient (gold anywhere in output) | 35.7% — **identical to strict** |
+| Format compliance (in-vocabulary) | 72.1% |
+| Throughput | 1.1 s/example · peak VRAM **1.50 GiB** |
+
+**Strict == lenient exactly.** No hidden format-refusal masking blindness — when the model is wrong, the gold answer is genuinely absent from its output. That was the caveat the probe was built to detect, and it is clear.
+
+#### The result is two different results
+
+| Question type | n | Accuracy | Reference |
+|---|---|---|---|
+| **Binary (yes/no)** | 61 | **67.2%** | chance = 50% → **+17 pp of real signal** |
+| **Open-ended** | 79 | **11.4%** | near-collapse |
+
+224×224 supports coarse existence/presence judgements but **not** fine-grained identity, status or counting. That is exactly the resolution story, now measured rather than feared.
+
+#### Error decomposition (90 errors)
+
+| Cause | n | Meaning |
+|---|---|---|
+| Prediction **outside** the answer vocabulary | 39 | format/synonym loss — `bike`→`bicycle`, `zero`→`0`, `disabled`→`parked` |
+| Prediction **in** vocabulary but wrong | 51 | genuine misperception |
+
+The model also says `taxi` 11 times for objects that are not taxis — a default guess when it cannot resolve the object.
+
+#### ⚠️ Interpretive caveat that MUST go in the paper
+
+**A large share of the finetuning gain will be output-vocabulary alignment, not improved perception.** 39 of 90 errors are the model answering sensibly in the wrong words; a LoRA adapter learns a 29-word answer vocabulary within a few hundred steps. So a 35.7% → ~70% jump would mostly mean *"learned to say `bicycle` instead of `bike`"*.
+
+This does **not** invalidate the benchmark — every run row pays the same easy win, so QLoRA vs DoRA vs LoRA remain rankable, and the large headroom is precisely what makes them rankable. But reporting the jump as a perception improvement would be dishonest. **Mitigation:** report format compliance (in-vocab %) as a separate column so the vocabulary gain is visible and separable from the perception gain.
+
+### Unresolved / deferred
+
+- Open-ended accuracy at 11.4% is thin. If W3 shows the five methods cannot be separated on open-ended questions, consider **reporting binary and open-ended as separate benchmark columns** rather than one blended accuracy.
+- Escape route if this ever fails: **NuScenes-QA annotations (ungated, GitHub) + full-resolution nuScenes-mini images**. ⚠️ nuScenes requires account registration — decide whether that trips D9 before relying on it.
+- The probe used shard 0 of `day-validation` only (140 of ~2,229 rows). Milestone E must freeze a proper eval split.
+
+---
+
+## 7. Key decisions
 
 ### 2026-07-28
 
@@ -190,9 +329,22 @@ capability >= (8, 0)                         = False   <-- the hardware reason
 **D6 — Default Kaggle accelerator is T4 x2, not P100.**
 *Why:* P100 (sm_60) has no fp16 tensor cores and `LLM.int8()` requires sm_75+. The single-device 16 GB is a trap.
 
+### 2026-08-10
+
+**D7 — Datasets must be US/North-America collected, and image-based before video.**
+*Why (US):* the paper targets a US audience and NVIDIA Metropolis is a US deployment story; a model finetuned on non-US road furniture, signage and vehicle mix demos badly against it. *Why (image-first):* stepping stone — proving the cheap case before the expensive one depends on it, the same ordering Week 1 used. If video turns out infeasible on a T4, an image benchmark is already banked instead of nothing.
+*Note:* the US constraint is a **narrative/career** requirement, not a requirement of the research claim — the QLoRA-vs-DoRA-vs-LoRA comparison is indifferent to footage geography. It may rule out a poor-fit dataset; it must **not** push us into a gated or unusable one.
+
+**D8 — We do not build our own dataset. Rejected generating VQA pairs from an annotated US roadside set (TU-DAT et al.).**
+*Why:* the problem statement is *"quantization-aware PEFT is competitive under matched VRAM and wall-clock budgets."* A self-built dataset is a second, unrelated claim that dilutes the first and hands a reviewer a new attack surface. The dataset is instrumentation, not the contribution. Aadi's call, and correct — this reverses an earlier recommendation of mine.
+*Consequence:* ready-made QA pairs become a hard requirement.
+
+**D9 — Gated datasets are disqualified from being the primary.**
+*Why:* deliverable #4 is "reproducible Kaggle notebooks — anyone can re-run the whole thing for $0." If a reader must submit a form and wait for presigned URLs, that claim is dead. This is a reproducibility argument and eliminated SUTD-TrafficQA, InterAct-Video, AI City Challenge and DriveLM as primaries.
+
 ---
 
-## 7. State log
+## 8. State log
 
 *(Append-only, newest last.)*
 
@@ -210,3 +362,18 @@ capability >= (8, 0)                         = False   <-- the hardware reason
   - **Silicon, not software — settled empirically.** Kaggle runs CUDA 12.8 (near-current) and still has no bf16; the local 3060 has it on a different CUDA. The variable is compute capability (sm_75 Turing vs sm_86 Ampere), nothing installable.
   - Kaggle stack: Linux, Python 3.12.13, torch 2.10.0+cu128. bitsandbytes installs cleanly via `pip install -q bitsandbytes` (not in the base image).
   - A token was leaked into a notebook cell and revoked immediately; see the security note in §1.
+- **2026-08-10 — Milestone D dataset survey (steps 1–3 of 5).** Ten candidates surveyed and verified against source pages, not recall. Locked D7 (US-collected + image-first), D8 (no self-built dataset), D9 (no gated primaries). Recommendation: `nuscenes-qa-mini`; fallback SUTD-TrafficQA. Full table + verified facts in §6. **Steps 4–5 (download, inspect ~20 examples, record) still outstanding — the pick is not final.**
+  - **The survey's main finding is a negative one: the intersection of {US-collected, image-based, ungated, ready-made QA, roadside/smart-city} is empty.** Every candidate fails at least one. This is worth one paragraph in the paper — it is a real gap in the public dataset landscape, not a shortcoming of the search.
+  - **Two datasets advertise a size that is annotations only.** DriveLM's 4.86 GB and SurveillanceVQA-589K's 2.31 GB both exclude the images/videos, which come from a separate (and far larger) download. **Always check whether media is in the repo before trusting a size figure.**
+  - **`gated` is not one thing.** HF's `gated` flag, a Zenodo request form, and a Google Form with weekly batch review are three different costs. DriveLM reports ungated in search results but shows "You need to agree to share your contact information" on the repo page — check the page, not the summary.
+  - RoadSceneVQA (AAAI 2026) was the best domain fit found — roadside, regulation-aware reasoning, image-based, 34,736 QA — with **no locatable public release**. Recheck later; if it lands, it is a strong Week 5+ addition.
+- **2026-08-10 — Milestone D step 4: shard downloaded and inspected.** `scripts/inspect_dataset.py` pulls **one** 457 MB Arrow shard (not the full 19.8 GB), reports schema, QA pairs, answer distribution, true storage breakdown, and dumps CAM_FRONT images to `outputs/dataset_peek/`. Measurements in §6.
+  - **Step 4 earned its place.** Metadata said "19.8 GB, 6-view images + LiDAR, 29 answer classes" — all true and all misleading. Only downloading revealed **224×224** images and an **int64** storage format. plan.md's *"a dataset that looks right on paper and wrong in practice is the normal failure"* was exactly right.
+  - **Published size figures can be ~200× off what you need.** 19.8 GB → ~87 MB after dropping LiDAR + 5 of 6 views and encoding JPEG. **Never reject a dataset on its published size before checking what that size is made of.**
+  - **Measure the majority-class baseline before any model runs.** 22.9% here. Without it, a 45% accuracy result reads as success rather than as barely beating "always answer yes".
+  - Two instrumentation bugs in the first version of the script, both silent: `json.dumps` byte-counting gave a wrong 10.8× reduction (true: 22.3× waste vs JPEG), and the PIL check failed because images are nested int64 lists, not an HF `Image` feature. **Sizing a column by serializing it is not measuring it** — use `table.column(name).nbytes` and `np.array(...).shape`.
+- **2026-08-10 — Milestone D ✅ COMPLETE. Zero-shot probe run; dataset committed.** `scripts/zeroshot_probe.py`: **35.7%** strict vs **22.9%** majority baseline over all 140 rows of `day-validation` shard 0, 1.1 s/example, peak 1.50 GiB. Floor-effect hypothesis **rejected**. Full breakdown in §6.
+  - **The headline number hid two opposite results.** Binary yes/no **67.2%** (vs 50% chance) against open-ended **11.4%**. A single blended accuracy would have concealed that 224×224 supports presence judgements but not identity or counting. **Always disaggregate before trusting an aggregate.**
+  - **Writing the pass/fail thresholds into the script before running it** (≥10 pp commit, 3–10 pp marginal, <3 pp abort) meant the verdict could not be rationalised after seeing 35.7%. Same discipline Milestone E needs, and cheap to apply.
+  - **`strict == lenient` was the check that mattered.** Had lenient run far above strict, the low score would have been a prompt-format problem misdiagnosed as a bad dataset. Scoring only one way would not have distinguished them.
+  - Prompt-format lesson: a reasoning-tuned model must be told explicitly to emit *only* the answer, or exact-match scores near zero for reasons unrelated to comprehension. Format compliance still only **72.1%** zero-shot.

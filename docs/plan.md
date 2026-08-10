@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
 > Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
-> Last updated: 2026-08-07 · **Week 1 complete; Week 2 is next (§5, Milestones D–F).**
+> Last updated: 2026-08-10 · **Week 1 complete. Week 2 in progress: Milestone D ✅ complete (dataset = `nuscenes-qa-mini`); Milestone E is next.**
 
 ---
 
@@ -171,7 +171,9 @@ Character shift: Week 1 was plumbing with binary pass/fail. Week 2 is **judgment
 
 ---
 
-#### Milestone D — Metropolis dataset shortlist
+#### Milestone D — Metropolis dataset shortlist ✅ **COMPLETE 2026-08-07→10**
+
+**Result:** 10 candidates surveyed; **`KevinNotSmile/nuscenes-qa-mini`** chosen, SUTD-TrafficQA as fallback. Confirmed by a zero-shot probe (**35.7%** vs a **22.9%** majority baseline) rather than by metadata. Full record and the accepted weaknesses live in [`memory.md`](./memory.md) §6.
 
 **Goal:** 2–3 candidate datasets meeting the §8 criteria, with a recommendation and a stated fallback.
 
@@ -280,17 +282,25 @@ PyPI latest is **5.14.1**, a major release with breaking changes. Every Cosmos/Q
 
 ---
 
-## 8. Week 2 dataset survey criteria
+## 8. Week 2 dataset survey criteria — **revised 2026-08-10**
 
-Shortlist **2–3** candidates, Metropolis-aligned (smart-city / traffic / surveillance / industrial-safety video VQA). For each, report:
+> Survey executed 2026-08-10. Results, verified facts and the recommendation live in [`memory.md`](./memory.md) §6, which is authoritative. Criteria below were revised *during* the survey after decisions D7–D9 landed.
 
-- **Exact size** — flag anything over ~a few GB (must be feasible to download and use on free Kaggle)
-- **License** — must permit research use *and* redistribution of results
-- **Access method** — flag anything gated or application-required
-- **Format / annotation type** — must suit VQA-style eval of a VLM
-- **Iteration speed** — small enough to iterate quickly
+**Hard requirements** (in elimination order — 1 killed the most candidates):
 
-**Bias strongly toward the smallest viable set.** Narrative fit and zero-cost feasibility beat dataset size and leaderboard prestige.
+1. **Ungated + openly licensed.** A gated dataset breaks deliverable #4 ("anyone can re-run for $0"). Reproducibility argument, not convenience (D9).
+2. **Ready-made QA pairs.** No dataset construction — that is a second claim and dilutes the problem statement (D8).
+3. **Image-based** before video. Video is Week 4+ (D7).
+4. **Small enough for free Kaggle**, counting *media*, not just annotations.
+5. **US/North-America collected**, traffic/urban domain — preferred, but never at the cost of 1–3 (D7).
+
+*Nice-to-have:* published baselines, so a wrong harness is visible rather than silent.
+
+**Bias strongly toward the smallest viable set.** Zero-cost feasibility and reproducibility beat dataset size and leaderboard prestige.
+
+⚠️ **Two traps found the hard way, both now standing rules:**
+- **A stated size may be annotations only.** DriveLM (4.86 GB) and SurveillanceVQA-589K (2.31 GB) both exclude their media. Confirm the images/videos are actually in the repo before trusting a size.
+- **Check the dataset page, not the search summary, for gating.** DriveLM reads as ungated in search results and gates on the page.
 
 ---
 
