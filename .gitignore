@@ -8,10 +8,19 @@ __pycache__/
 *.pt
 *.gguf
 
+# Scratch: sample images, dumps, anything large or regenerable.
+# NOT results/ — that is tracked on purpose (plan.md §4: every run commits its
+# config + measured metrics). Keep results/ to small JSON only.
 outputs/
 checkpoints/
 .env
 *.log
+
+# Belt and braces: nothing heavy may sneak into the tracked results dir.
+results/**/*.png
+results/**/*.jpg
+results/**/*.arrow
+results/**/*.parquet
 
 .vscode/
 .idea/

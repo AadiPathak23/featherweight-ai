@@ -26,8 +26,10 @@ import argparse
 import json
 import re
 import string
+import subprocess
 import time
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -40,7 +42,11 @@ REPO_ID = "KevinNotSmile/nuscenes-qa-mini"
 SHARD = "day-validation/data-00000-of-00016.arrow"  # eval split, never trained on
 
 GIB = 1024**3
-OUT_PATH = Path(__file__).resolve().parent.parent / "outputs" / "zeroshot_probe.json"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+# results/ is TRACKED (small JSON, diffable across runs); outputs/ is ignored scratch.
+# plan.md §4: "every run writes its config + measured metrics to a results file,
+# committed back."
+OUT_PATH = REPO_ROOT / "results" / "zeroshot_probe.json"
 
 # Answers are one or two words from a closed 29-class vocabulary. Say so, or a
 # reasoning-tuned model emits a paragraph and exact-match scores zero for reasons
@@ -50,6 +56,23 @@ PROMPT_TEMPLATE = (
     "Answer with ONLY the answer itself - a single word or short phrase. "
     "No explanation, no reasoning, no punctuation."
 )
+
+
+def git_sha() -> str:
+    """Which code produced this number. Without it a results file is an orphan —
+    you cannot tell whether two runs differ because of the method or the harness."""
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        return f"{sha}-dirty" if dirty else sha
+    except Exception:  # noqa: BLE001 - never let provenance capture kill a run
+        return "unknown"
 
 
 def vram(label: str) -> tuple[float, float]:
@@ -228,13 +251,39 @@ def main() -> int:
             print("  refusing the output format, not blindness. Fix the prompt and")
             print("  re-probe before condemning the dataset.")
 
+    binary = [x for x in records if x["gold"].strip().lower() in ("yes", "no")]
+    open_ended = [x for x in records if x["gold"].strip().lower() not in ("yes", "no")]
+
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps({
-        "model": MODEL_ID, "dataset": REPO_ID, "split": SHARD,
-        "n": n, "max_new_tokens": args.max_new_tokens,
-        "strict": strict, "lenient": lenient, "majority_baseline": majority,
-        "majority_answer": majority_answer, "in_vocab_pct": 100 * in_vocab / n,
-        "seconds": elapsed, "peak_vram_gib": peak,
+        "run": "zeroshot_probe",
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git_sha": git_sha(),
+        "config": {
+            "model": MODEL_ID, "dataset": REPO_ID, "split": SHARD,
+            "quantization": "4-bit nf4 + double quant, compute fp16",
+            "decoding": "greedy (do_sample=False)",
+            "max_new_tokens": args.max_new_tokens,
+            "prompt_template": PROMPT_TEMPLATE,
+            "device": torch.cuda.get_device_name(0),
+        },
+        "metrics": {
+            "n": n,
+            "strict": strict,
+            "lenient": lenient,
+            "majority_baseline": majority,
+            "majority_answer": majority_answer,
+            "delta_over_baseline_pp": strict - majority,
+            "in_vocab_pct": 100 * in_vocab / n,
+            # Disaggregated because the blended number hides the real story:
+            # 224x224 supports presence judgements but not identity or counting.
+            "binary_n": len(binary),
+            "binary_acc": 100 * sum(x["strict"] for x in binary) / max(len(binary), 1),
+            "open_ended_n": len(open_ended),
+            "open_ended_acc": 100 * sum(x["strict"] for x in open_ended) / max(len(open_ended), 1),
+        },
+        "timings": {"seconds_total": elapsed, "seconds_per_example": elapsed / n},
+        "peak_vram_gib": peak,
         "records": records,
     }, indent=2))
     print(f"\nwrote {OUT_PATH}")

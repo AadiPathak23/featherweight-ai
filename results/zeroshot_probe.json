@@ -1,0 +1,1155 @@
+{
+  "run": "zeroshot_probe",
+  "timestamp_utc": "2026-08-10T09:11:37+00:00",
+  "git_sha": "668dad6-dirty",
+  "config": {
+    "model": "nvidia/Cosmos-Reason2-2B",
+    "dataset": "KevinNotSmile/nuscenes-qa-mini",
+    "split": "day-validation/data-00000-of-00016.arrow",
+    "quantization": "4-bit nf4 + double quant, compute fp16",
+    "decoding": "greedy (do_sample=False)",
+    "max_new_tokens": 48,
+    "prompt_template": "{question}\n\nAnswer with ONLY the answer itself - a single word or short phrase. No explanation, no reasoning, no punctuation.",
+    "device": "NVIDIA GeForce RTX 3060 Laptop GPU"
+  },
+  "metrics": {
+    "n": 140,
+    "strict": 35.714285714285715,
+    "lenient": 35.714285714285715,
+    "majority_baseline": 22.857142857142858,
+    "majority_answer": "yes",
+    "delta_over_baseline_pp": 12.857142857142858,
+    "in_vocab_pct": 72.14285714285714,
+    "binary_n": 61,
+    "binary_acc": 67.21311475409836,
+    "open_ended_n": 79,
+    "open_ended_acc": 11.39240506329114
+  },
+  "timings": {
+    "seconds_total": 133.21472030016594,
+    "seconds_per_example": 0.9515337164297567
+  },
+  "peak_vram_gib": 1.5005521774291992,
+  "records": [
+    {
+      "question": "Are any moving pedestrians visible?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Does the bus have the same status as the construction vehicle?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "What status is the motorcycle that is to the back right of the with rider thing?",
+      "gold": "without rider",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The with rider thing is what?",
+      "gold": "bicycle",
+      "pred": "bike",
+      "raw": "bike",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a moving thing to the front left of me; what is it?",
+      "gold": "pedestrian",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Is the status of the trailer the same as the truck to the back right of the moving car?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a bus; what status is it?",
+      "gold": "moving",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any other things of the same status as the construction vehicle?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "No",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any parked trucks to the back right of me?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any other pedestrians of the same status as the traffic cone to the back right of the with rider thing?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any barriers?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What number of stopped trucks are there?",
+      "gold": "3",
+      "pred": "1",
+      "raw": "1",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Does the thing that is to the back of the not standing pedestrian have the same status as the car that is to the back right of the not standing pedestrian?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a car that is to the back right of the bus; does it have the same status as the construction vehicle?",
+      "gold": "no",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What status is the truck to the front of the with rider thing?",
+      "gold": "parked",
+      "pred": "disabled",
+      "raw": "Disabled",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a truck that is to the front left of the moving bus; does it have the same status as the bus?",
+      "gold": "no",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Is the status of the construction vehicle the same as the truck?",
+      "gold": "no",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a bus; what status is it?",
+      "gold": "stopped",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a truck; is it the same status as the car that is to the back of the traffic cone?",
+      "gold": "no",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "How many other things are there of the same status as the bicycle?",
+      "gold": "0",
+      "pred": "zero",
+      "raw": "zero",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the status of the truck?",
+      "gold": "moving",
+      "pred": "stopped",
+      "raw": "Stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "How many cars are there?",
+      "gold": "9",
+      "pred": "3",
+      "raw": "3",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The without rider thing that is to the front of the with rider thing is what?",
+      "gold": "bicycle",
+      "pred": "bridge",
+      "raw": "bridge",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any cars?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "Yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are any bicycles visible?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are any moving pedestrians visible?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any moving construction vehicles?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "What number of parked trucks are to the back right of the moving car?",
+      "gold": "1",
+      "pred": "1",
+      "raw": "1",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a moving pedestrian; how many things are to the back right of it?",
+      "gold": "1",
+      "pred": "1",
+      "raw": "1",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a thing that is to the front of the with rider motorcycle and the back right of the bus; what is it?",
+      "gold": "car",
+      "pred": "cone",
+      "raw": "cone",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Is the status of the car to the front left of the with rider bicycle the same as the construction vehicle?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any parked motorcycles?",
+      "gold": "no",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are any trucks visible?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Does the bicycle to the front left of the with rider thing have the same status as the truck?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any with rider bicycles to the back left of me?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "How many other pedestrians in the same status as the car to the back of the stopped car?",
+      "gold": "5",
+      "pred": "0",
+      "raw": "0",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are any parked cars visible?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "Yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Is there another motorcycle of the same status as the truck that is to the front left of the with rider bicycle?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The moving thing to the front left of me is what?",
+      "gold": "car",
+      "pred": "truck",
+      "raw": "truck",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a car to the front of the with rider motorcycle; is it the same status as the bus?",
+      "gold": "no",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "How many stopped cars are to the back of the bus?",
+      "gold": "5",
+      "pred": "2",
+      "raw": "2",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the status of the bicycle?",
+      "gold": "with rider",
+      "pred": "unavailable",
+      "raw": "Unavailable",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The parked thing is what?",
+      "gold": "truck",
+      "pred": "bus",
+      "raw": "bus",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a moving thing that is both to the front left of the with rider thing and the back of the stopped thing; what is it?",
+      "gold": "car",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Do the thing to the front of the moving truck and the truck to the front of the construction vehicle have the same status?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Does the pedestrian to the front of the with rider thing have the same status as the trailer?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any other traffic cones that in the same status as the construction vehicle?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The motorcycle that is to the back of the bus is in what status?",
+      "gold": "with rider",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What number of other things in the same status as the thing to the front of the bicycle?",
+      "gold": "8",
+      "pred": "2",
+      "raw": "2",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any cars?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "What number of other things are in the same status as the bus?",
+      "gold": "10",
+      "pred": "five",
+      "raw": "Five",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "How many moving things are to the back of the bus?",
+      "gold": "5",
+      "pred": "1",
+      "raw": "1",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What status is the truck?",
+      "gold": "parked",
+      "pred": "broken down",
+      "raw": "Broken down",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a thing that is to the back right of the stopped bus; is it the same status as the pedestrian that is to the front of the traffic cone?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The thing that is both to the back right of the trailer and the back right of me is what?",
+      "gold": "car",
+      "pred": "bus",
+      "raw": "bus",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a bus; are there any things to the back right of it?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a car that is to the front of the parked trailer; does it have the same status as the truck that is to the back of the trailer?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The bicycle that is to the front left of the parked thing is in what status?",
+      "gold": "with rider",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the moving thing that is to the front of the construction vehicle and the back right of the moving bus?",
+      "gold": "car",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Is there another thing that has the same status as the truck to the back of the moving truck?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "What is the stopped thing that is to the back right of the moving truck?",
+      "gold": "truck",
+      "pred": "pole",
+      "raw": "pole",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The bicycle is in what status?",
+      "gold": "with rider",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the stopped thing to the back of me?",
+      "gold": "car",
+      "pred": "van",
+      "raw": "van",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The thing to the back of the with rider thing is what?",
+      "gold": "car",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any moving cars?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any barriers?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "How many traffic cones are there?",
+      "gold": "10",
+      "pred": "2",
+      "raw": "2",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a moving thing to the back of the bus; what is it?",
+      "gold": "pedestrian",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The with rider thing that is to the front of me is what?",
+      "gold": "motorcycle",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the status of the car to the front left of the with rider bicycle?",
+      "gold": "moving",
+      "pred": "stopped",
+      "raw": "Stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a construction vehicle; is its status the same as the thing that is to the front left of the with rider thing?",
+      "gold": "no",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What status is the bicycle?",
+      "gold": "with rider",
+      "pred": "unavailable",
+      "raw": "Unavailable",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any other construction vehicles of the same status as the pedestrian that is to the front left of the with rider bicycle?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any other buss of the same status as the bicycle?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The thing that is to the front left of the construction vehicle and the back right of the with rider bicycle is what?",
+      "gold": "car",
+      "pred": "bus",
+      "raw": "bus",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The moving thing to the front left of the parked truck is what?",
+      "gold": "pedestrian",
+      "pred": "car",
+      "raw": "car",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The stopped thing that is to the front left of the stopped bus is what?",
+      "gold": "truck",
+      "pred": "truck",
+      "raw": "truck",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "What is the status of the bus?",
+      "gold": "stopped",
+      "pred": "unavailable",
+      "raw": "Unavailable",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Does the car that is to the front of the construction vehicle have the same status as the bus?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The thing that is to the back right of me and the back right of the trailer is what?",
+      "gold": "barrier",
+      "pred": "bridge",
+      "raw": "bridge",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a thing to the back of the not standing pedestrian; what is it?",
+      "gold": "pedestrian",
+      "pred": "sign",
+      "raw": "sign",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The moving thing to the front of me is what?",
+      "gold": "car",
+      "pred": "truck",
+      "raw": "truck",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are any traffic cones visible?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a construction vehicle that is to the back of me; what is its status?",
+      "gold": "parked",
+      "pred": "broken down",
+      "raw": "Broken down",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The with rider thing to the back right of the with rider bicycle is what?",
+      "gold": "motorcycle",
+      "pred": "truck",
+      "raw": "truck",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a stopped trailer; are there any trailers to the front of it?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The moving thing that is to the front of the stopped bus is what?",
+      "gold": "car",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a pedestrian to the back right of the stopped thing; what is its status?",
+      "gold": "moving",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The parked thing to the back right of the construction vehicle is what?",
+      "gold": "car",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The construction vehicle is in what status?",
+      "gold": "stopped",
+      "pred": "stopped",
+      "raw": "Stopped",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The car that is to the back of the bicycle is in what status?",
+      "gold": "parked",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a thing that is to the back of the parked construction vehicle and the front of the truck; what is it?",
+      "gold": "traffic cone",
+      "pred": "bus",
+      "raw": "bus",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a bicycle that is to the front of the stopped car; what status is it?",
+      "gold": "with rider",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any moving buss to the front of the with rider bicycle?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any parked things to the front left of the stopped car?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Do the car that is to the back right of the trailer and the pedestrian that is to the front left of the not standing pedestrian have the same status?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any parked things?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a with rider bicycle; are there any motorcycles to the back of it?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "How many moving pedestrians are there?",
+      "gold": "8",
+      "pred": "0",
+      "raw": "0",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The stopped thing is what?",
+      "gold": "car",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a truck to the front of the moving pedestrian; is it the same status as the bus?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a without rider thing to the back right of me; what is it?",
+      "gold": "motorcycle",
+      "pred": "bus",
+      "raw": "bus",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any pedestrians to the front left of the stopped truck?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any traffic cones to the front left of the truck?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the thing that is both to the back of the moving truck and the front of me?",
+      "gold": "car",
+      "pred": "building",
+      "raw": "building",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "The thing that is to the back right of the with rider thing and the front of the stopped car is what?",
+      "gold": "car",
+      "pred": "building",
+      "raw": "building",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a without rider thing; what is it?",
+      "gold": "motorcycle",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any moving things to the front left of the stopped truck?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Is there another car that has the same status as the car to the back right of the moving truck?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a truck to the back right of me; what is its status?",
+      "gold": "parked",
+      "pred": "stopped",
+      "raw": "stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are any traffic cones visible?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any standing pedestrians to the front right of the bus?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "How many other things are in the same status as the truck?",
+      "gold": "6",
+      "pred": "cars",
+      "raw": "Cars",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What number of with rider bicycles are to the front of me?",
+      "gold": "0",
+      "pred": "0",
+      "raw": "0",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Are there any trucks to the back right of me?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a thing that is both to the back right of the not standing pedestrian and the front of the moving truck; what is it?",
+      "gold": "pedestrian",
+      "pred": "bridge",
+      "raw": "bridge",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a moving thing that is to the front of the bicycle; what is it?",
+      "gold": "car",
+      "pred": "van",
+      "raw": "van",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any parked construction vehicles?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What number of cars are there?",
+      "gold": "6",
+      "pred": "1",
+      "raw": "1",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What number of other buss in the same status as the car to the back right of the truck?",
+      "gold": "1",
+      "pred": "0",
+      "raw": "0",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a parked thing; what is it?",
+      "gold": "car",
+      "pred": "truck",
+      "raw": "truck",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a motorcycle to the front left of the parked truck; does it have the same status as the bicycle?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "Does the trailer have the same status as the bus?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The with rider thing to the front of the moving bus is what?",
+      "gold": "motorcycle",
+      "pred": "bike",
+      "raw": "bike",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any parked motorcycles?",
+      "gold": "no",
+      "pred": "no",
+      "raw": "no",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "How many pedestrians are there?",
+      "gold": "2",
+      "pred": "0",
+      "raw": "0",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What number of other trucks in the same status as the truck that is to the back right of the not standing pedestrian?",
+      "gold": "1",
+      "pred": "0",
+      "raw": "0",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "How many moving cars are to the back of me?",
+      "gold": "5",
+      "pred": "1",
+      "raw": "1",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are there any buss?",
+      "gold": "yes",
+      "pred": "no",
+      "raw": "no",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the status of the car to the back right of the moving pedestrian?",
+      "gold": "stopped",
+      "pred": "stopped",
+      "raw": "Stopped",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "The standing pedestrian to the back of the parked thing is what?",
+      "gold": "pedestrian",
+      "pred": "taxi",
+      "raw": "taxi",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are any traffic cones visible?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "Yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a bus; how many moving things are to the front of it?",
+      "gold": "1",
+      "pred": "1",
+      "raw": "1",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "There is a bus; what number of standing pedestrians are to the back right of it?",
+      "gold": "5",
+      "pred": "1",
+      "raw": "1",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Are any things visible?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "Yes",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "What is the status of the bus?",
+      "gold": "stopped",
+      "pred": "stopped",
+      "raw": "Stopped",
+      "strict": true,
+      "lenient": true
+    },
+    {
+      "question": "What status is the car that is to the back right of the stopped thing?",
+      "gold": "parked",
+      "pred": "stopped",
+      "raw": "Stopped",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "There is a moving car; what number of things are to the back of it?",
+      "gold": "7",
+      "pred": "twenty-two",
+      "raw": "twenty-two",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "What is the with rider thing?",
+      "gold": "bicycle",
+      "pred": "bike",
+      "raw": "bike",
+      "strict": false,
+      "lenient": false
+    },
+    {
+      "question": "Is there another thing of the same status as the pedestrian that is to the front of the moving car?",
+      "gold": "yes",
+      "pred": "yes",
+      "raw": "yes",
+      "strict": true,
+      "lenient": true
+    }
+  ]
+}
