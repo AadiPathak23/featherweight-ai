@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
 > Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
-> Last updated: 2026-08-10 · **Week 1 complete. Week 2 in progress: Milestone D ✅ complete (dataset = `nuscenes-qa-mini`); Milestone E is next.**
+> Last updated: 2026-08-11 · **Week 1 complete. Week 2 in progress: Milestone D ✅ complete (dataset = `nuscenes-qa-mini`); Milestone E is next.**
 
 ---
 
@@ -22,6 +22,7 @@ Project #1 of a planned arc. Later phases: multi-LoRA edge serving (#2), a stand
 | D3 | **No proxy model.** Every run row stays on Cosmos-Reason2-2B. | Same-model rows are what make the budget-matched claim apples-to-apples. A smaller substitute would break it. |
 | D4 | Full-FT infeasibility is framed as **supporting evidence for the edge-efficiency thesis**, not a limitation. | It is the finding, not a gap. |
 | D5 | Week 1 is **dataset-agnostic**. Dataset survey happens Week 2, restricted to **Metropolis-aligned domains** (smart-city / traffic / surveillance / industrial-safety video VQA). Explicitly **not** robotics/embodied. | Narrative fit with the Metropolis target. |
+| D10 | **Base model locked to Cosmos-Reason2-2B.** "Cosmos 3" is the generation/world-model line, not a newer Cosmos-Reason; no `Cosmos-Reason3` exists. Cosmos3-Edge/Nano/Super are 3.86B / 15.75B / 64.6B and diffusers-based. | Wrong task, wrong budget, unproven PEFT path. Full record + table in [`memory.md`](./memory.md) §7. Cosmos3 goes in *related work*; `Cosmos3-Edge` is a Project #2 candidate. |
 
 ---
 

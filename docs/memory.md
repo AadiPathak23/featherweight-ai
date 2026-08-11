@@ -4,7 +4,7 @@
 >
 > 🧭 **How we work — read before doing anything.** Aadi is deliberately working above his current level and wants to *learn*, not receive finished code. Per milestone: **frame** briefly → **Aadi writes a prediction before anything runs** → **build in small pieces**, explaining each non-obvious decision where it appears → **reconcile** prediction vs reality, digging hardest where he was wrong → **Aadi logs it in his own words**. Label each thing **Tier 1** (learn deeply: LoRA/DoRA math, quantization, fp16 stability, experiment design), **Tier 2** (know the shape: HF/PEFT APIs), or **Tier 3** (plumbing: venv, git, Kaggle UI). No black boxes — every flag and magic number gets a reason. Say plainly what is measured fact vs. estimate vs. untested bet. Where he can reason it out, ask and wait. One milestone per session; depth over throughput.
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
-> Last updated: 2026-08-10
+> Last updated: 2026-08-11
 
 ---
 
@@ -39,7 +39,8 @@ Then **Milestone F** — fp16 stability harness (NaN/Inf tripwire, loss-scale mo
 
 ### ⚠️ Owed
 
-- **`learning-log.md` has no entries for Milestones B, C or D.** The reconcile step of the working protocol below has not been closed since 2026-07-28. Milestone B's prediction bucket (2–3.5 GB) was right but the *reasoning* was about backprop, while the real peak came from load-time unpacking — that gap is the entry worth writing.
+- **`learning-log.md`: Milestone B answered 2026-08-10, but all four answers were wrong on mechanism** and are flagged `⚠️ Reconcile owed` in the file for Aadi to rewrite. The one that must be fixed before Week 3: *"training costs more because the loop repeats"* — it does not; repetition frees as it goes. The cost is that **backward needs the whole forward pass kept alive**. Also corrected there: the load-time peak is two copies of each layer (fp16 → NF4), not training/dataset; and a missing `reset_peak_memory_stats()` breaks the *measurement* silently, it does not cause errors or hallucination.
+- **Milestones C and D have no entries at all.** Scaffold prompts are in place.
 
 ### 📁 Repo map
 
@@ -114,6 +115,8 @@ Then **Milestone F** — fp16 stability harness (NaN/Inf tripwire, loss-scale mo
 ---
 
 ## 3. Model facts — `nvidia/Cosmos-Reason2-2B` *(verified 2026-07-28)*
+
+> **Base model is locked — see §7 D10 (2026-08-11).** "Cosmos 3" is NVIDIA's generation/world-model line, not a newer Cosmos-Reason. No `Cosmos-Reason3` exists. Reason2 remains current (32B variant added 2026-04-29).
 
 | Item | Value | Source |
 |---|---|---|
@@ -382,7 +385,33 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
 *Consequence:* ready-made QA pairs become a hard requirement.
 
 **D9 — Gated datasets are disqualified from being the primary.**
+
 *Why:* deliverable #4 is "reproducible Kaggle notebooks — anyone can re-run the whole thing for $0." If a reader must submit a form and wait for presigned URLs, that claim is dead. This is a reproducibility argument and eliminated SUTD-TrafficQA, InterAct-Video, AI City Challenge and DriveLM as primaries.
+
+### 2026-08-11
+
+**D10 — Stay on `Cosmos-Reason2-2B`. "Cosmos 3" is a different product line, not a newer version of our model.** *(All facts below from the HF API, queried 2026-08-11 — not recall.)*
+
+*The premise checks out but points elsewhere:* NVIDIA did ship a Cosmos**3** family (`Cosmos3-Nano` 2026-03-10, `Cosmos3-Super` 2026-03-10, `Cosmos3-Edge` 2026-07-01, plus Text2Image / Image2Video / Policy-DROID variants). **There is no `Cosmos-Reason3` — zero matches across all of HuggingFace.**
+
+| | Cosmos-Reason2-2B (ours) | Cosmos3-Edge | Cosmos3-Nano | Cosmos3-Super |
+|---|---|---|---|---|
+| `model_type` | `qwen3_vl` | `cosmos3_edge` | `cosmos3_omni` | `cosmos3_omni` |
+| Architecture | `Qwen3VLForConditionalGeneration` | `Cosmos3EdgeForConditionalGeneration` | `Cosmos3ForConditionalGeneration` | `Cosmos3ForConditionalGeneration` |
+| Pipeline tag | **`image-text-to-text`** | none (diffusers) | none (diffusers) | none (diffusers) |
+| Task | VLM reasoning / VQA | text, image, video, audio **and action generation** | same | same |
+| Params | **2.44B** | 3.86B | **15.75B** | **64.6B** |
+| Weights on disk | **4.88 GB** | 9.13 GB | 34.89 GB | 132.62 GB |
+
+*Why we do not switch:*
+
+1. **Wrong task.** Cosmos3 is the *generation / world-model* line (successor to Cosmos-Predict/Transfer), tagged "text, image, video, audio, and action generation" and built on diffusers. Our benchmark is exact-match VQA on a closed 29-class vocabulary. Cosmos-Reason2 is the only line tagged `image-text-to-text`.
+2. **It does not fit the budget, and the budget *is* the thesis.** The smallest Cosmos3 is 3.86B / 9.13 GB; Nano is 15.75B; Super is 64.6B. ⚠️ **"Nano" is a trap — it is 15.75B, 6× our model.** The names are family-relative, not absolute. §3 measures Reason2-2B at 1.47 GiB resident in NF4 on a 6 GB card. A model that cannot train on a 14.6 GiB T4 does not complicate this project, it deletes it.
+3. **Tooling risk is the real killer.** Reason2 is Qwen3-VL underneath, so plain `transformers` + `peft` + `bitsandbytes` work — **proven by measurement in Milestone B**. `Cosmos3ForConditionalGeneration` under `library_name: cosmos` + diffusers has no demonstrated QLoRA/DoRA path. Week 3 would become a porting project.
+4. **Reason2 is not stale.** `Cosmos-Reason2-32B` was published 2026-04-29 and the whole Reason2 family was updated 2026-04-30. It is the current reasoning line (615k downloads on the 2B).
+5. **D3 already covers this.** Every run row must stay on one model. Switching now discards the Milestone B footprint measurement and the entire Milestone D probe.
+
+*What we do instead:* cite Cosmos3 as **concurrent work** in the paper — it is strong evidence that NVIDIA is investing in exactly this space. `Cosmos3-Edge` (3.86B, explicitly edge-targeted) is a legitimate **Week 5+ / Project #2 extension**, not a Week 2 swap. ⚠️ Recheck for a `Cosmos-Reason3` before the write-up; if one lands mid-project it goes in related work, **not** into the benchmark table — changing the base model mid-benchmark invalidates every row already measured.
 
 ---
 
@@ -423,3 +452,8 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
   - The Milestone A state-log entry above still shows the old URL. **Left deliberately** — this log is append-only and that URL was correct on 2026-07-28. GitHub redirects it, so it still resolves.
   - `results/zeroshot_probe.json` records `git_sha` but **not** the remote URL, so no results file needed rewriting. Provenance that captures the commit rather than the hosting location survives a rename.
   - Fixed while cheap: the name is not yet cited in the paper, an HF model card, or the Kaggle notebook's public URL. After those exist, a rename means chasing citations.
+- **2026-08-11 — "Cosmos 3" checked against the HF API; base model unchanged (D10).** A Cosmos**3** family does exist (Nano/Super/Edge + Text2Image/Image2Video/Policy), but it is the **generation/world-model line**, not a successor to Cosmos-Reason. **No `Cosmos-Reason3` exists anywhere on HF.** Full comparison table and the five reasons to stay are in §7 D10.
+  - **Model family names do not imply size.** `Cosmos3-Nano` is **15.75B params / 34.89 GB** — 6× our 2.44B model. "Nano" is its rank *within the Cosmos3 family*, nothing more. Reading it as "small" would have wasted a session discovering it cannot load.
+  - **Newer is a different axis from applicable.** Cosmos3 is newer *and* useless here: wrong task (generation, not `image-text-to-text`), wrong size, and no proven `peft`/`bitsandbytes` path off the Qwen3-VL architecture that Milestone B already validated.
+  - Standing rule reaffirmed: **check the API, not recall.** Claude's training cutoff predates the Cosmos3 releases, so every fact in D10 came from `huggingface.co/api/models` queried live.
+  - `learning-log.md` restructured — Aadi's Milestone B answers moved out of HTML comments so they render, with `⚠️ Reconcile owed` blocks marking the four wrong mechanisms. **The wrong answers are kept, not deleted**; the gap is the pedagogical content.
