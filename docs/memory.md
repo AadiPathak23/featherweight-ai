@@ -58,10 +58,19 @@ Insurance against the project's highest risk (§5), and the last thing standing 
 
 **Open for W3/W4, not now:** open-ended accuracy is **13.8%**. If the five methods cannot be separated there, report binary and open-ended as separate columns (open question #9).
 
-### ⚠️ Owed
+### ⚠️ Owed — `learning-log.md`, all of it waiting on Aadi
 
-- **`learning-log.md`: Milestone B answered 2026-08-10, but all four answers were wrong on mechanism** and are flagged `⚠️ Reconcile owed` in the file for Aadi to rewrite. The one that must be fixed before Week 3: *"training costs more because the loop repeats"* — it does not; repetition frees as it goes. The cost is that **backward needs the whole forward pass kept alive**. Also corrected there: the load-time peak is two copies of each layer (fp16 → NF4), not training/dataset; and a missing `reset_peak_memory_stats()` breaks the *measurement* silently, it does not cause errors or hallucination.
-- **Milestones C and D have no entries at all.** Scaffold prompts are in place.
+**This is the one thread the 2026-08-11 session did not close.** Aadi stopped for the day intending to fill these in next session. Read the file; the prompts are already written in place.
+
+- **Milestone B — four `⚠️ Reconcile owed` blocks.** Answered 2026-08-10, all four wrong on *mechanism*; his original answers are kept verbatim, not deleted, because the gap is the content. **The one that must be fixed before Week 3:** *"training costs more because the loop repeats"* — it does not; each iteration frees the last one's activations, and Milestone B's own 57-token generation loop stayed flat. The cost is that **backward needs every forward activation kept alive** for the chain rule. Also corrected there: the load peak is two copies of each layer (fp16 source + NF4 output), not training or a dataset; and a missing `reset_peak_memory_stats()` breaks the *measurement* silently — no error, no hallucination.
+- **Milestone E — prediction reconciled, two questions open.** He predicted **25%**; measured **35.1%**. Direction right, magnitude off by ~10 pp, and the stated reasoning ("since it is zero-shot") explains the absolute level rather than the split-to-split change. The two questions left for him: (1) accuracy barely moved but delta-over-baseline fell a third because the *baseline* rose — did the model get worse, and what exactly did? (2) binary fell 67.2% → 59.2% with nothing about the model changing — what does that say about a percentage quoted without its n?
+- **Milestones C and D — no entries at all.** Scaffold prompts in place.
+
+### ✍️ Commit convention *(set 2026-08-11)*
+
+**Commit messages end at the last line of the body. No `Co-Authored-By: Claude` trailer.** Author stays `AadiPathak23 <aadipathak2323@gmail.com>`. This is a portfolio project and the work should read as Aadi's.
+
+⚠️ **Do not retroactively rewrite the 9 older commits that carry the trailer.** Aadi's explicit call: *"what has been done has been done."* Rewriting would change every SHA in the repo and break the `git_sha` provenance stored inside `results/*.json` — a discipline §9 and `results/README.md` depend on. The detailed why-not-what message style stays; only the trailer goes.
 
 ### 📁 Repo map
 
@@ -502,6 +511,8 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
   - Loading PNGs instead of decoding nested int lists made eval **3.8× faster** (1.1 → 0.33 s/example), so a full 1,117-row run is ~6 min and the two-run determinism check stays cheap for the rest of the project.
   - `hf_xet` installed (optional, download-path only) after repeated `Read timed out` against the HF CDN; recorded in `requirements-local.txt` with the reason.
   - Corrected §6: `CAM_FRONT` values are **uint8**, not int64. The 344 KB/row is nested-list **int32 offset buffers**. The 22.3× conclusion stands, the mechanism did not — **a correctly measured number can still carry a wrong explanation, and only the explanation reaches the paper.**
+
+- **2026-08-11 (end of session) — housekeeping.** Commit convention set: no `Co-Authored-By: Claude` trailer, author stays `AadiPathak23`. Existing 9 commits carrying it are **deliberately left alone** — rewriting them would change every SHA and invalidate the `git_sha` provenance inside `results/*.json`. `learning-log.md` is the only open thread: Milestone B reconciles, the Milestone E follow-up questions, and empty C/D scaffolds, all waiting on Aadi.
 
 ---
 
