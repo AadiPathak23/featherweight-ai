@@ -36,4 +36,20 @@ Every run file carries the same top-level shape, so runs stay diffable:
 
 | File | What it establishes |
 |---|---|
-| `zeroshot_probe.json` | Milestone D go/no-go — 224×224 resolution does not cause a floor effect. Zero-shot 35.7% vs 22.9% baseline. Also benchmark row 1 (zero-shot, 4-bit NF4). |
+| `zeroshot_probe.json` | Milestone D go/no-go — 224×224 resolution does not cause a floor effect. Zero-shot 35.7% vs 22.9% baseline on 140 rows. **Superseded as a benchmark row** by `eval_zeroshot.json`; kept as the record of the dataset decision. |
+| `eval_split_manifest.jsonl` | **The frozen eval split.** 1,120 rows of `day-validation` shards 0–7 — image filename, source shard + row index, `token`, question, answer, and the `sha256` of each PNG. Pixels live in the gitignored `outputs/eval_split/`; identity lives here. Verify with `python scripts/build_eval_split.py --verify`. |
+| `answer_vocab.json` | **The frozen answer vocabulary**, derived from `day-train` with a saturation check — never from the eval split. Used for format-compliance scoring on every run. See `docs/eval-protocol.md` §5. |
+| `eval_zeroshot_shard0.json` | Regression gate for the Milestone E port: `src/eval.py` restricted to the probe's original 140 rows. Exists to prove the refactor is faithful. `full_split: false` — **not a benchmark row.** |
+| `eval_zeroshot.json` | **Benchmark row 1** — zero-shot Cosmos-Reason2-2B, 4-bit NF4, on the full frozen 1,120-row split under `docs/eval-protocol.md`. |
+
+## Comparing two runs
+
+```
+python -m src.eval --compare results/eval_zeroshot.json results/eval_qlora.json
+```
+
+Runs **McNemar** on the paired per-example outcomes rather than comparing the two
+accuracies' confidence intervals. Both runs score the same examples, so per-item
+difficulty cancels and only the disagreements carry information — which is what makes
+1,120 rows enough to separate methods a couple of points apart. See
+`docs/eval-protocol.md` §8.

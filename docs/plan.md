@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
 > Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
-> Last updated: 2026-08-11 · **Week 1 complete. Week 2 in progress: Milestone D ✅ complete (dataset = `nuscenes-qa-mini`); Milestone E is next.**
+> Last updated: 2026-08-11 · **Week 1 complete. Week 2: D ✅ (dataset) and E ✅ (eval protocol frozen, benchmark row 1 = 35.1%) both complete. Milestone F is next.**
 
 ---
 
@@ -196,7 +196,13 @@ A written shortlist with verified size/license/access per candidate, one recomme
 
 ---
 
-#### Milestone E — Eval protocol *(the one that decides defensibility)* ← **NEXT**
+#### Milestone E — Eval protocol ✅ **COMPLETE 2026-08-11**
+
+**Result:** [`docs/eval-protocol.md`](./eval-protocol.md) frozen before any adapter exists. `src/eval.py` is the harness for every benchmark row. Frozen split = `day-validation` shards 0–7, **1,117 rows**, committed as a manifest with a sha256 per image. Answer vocabulary frozen from `day-train`, **saturated at 29 classes**.
+
+**Benchmark row 1 — zero-shot, 4-bit NF4: 35.1% strict** vs a **26.3%** majority baseline (**+8.8 pp**), 95% CI [32.4, 37.9], format compliance 81.3%, binary 59.2% (n=524), open-ended 13.8% (n=593). **Two runs, all 1,117 raw outputs byte-identical** — success criterion met. Full record in [`memory.md`](./memory.md) §9.
+
+**What the larger split changed:** accuracy moved only 0.6 pp (35.7 → 35.1), but delta-over-baseline fell **+12.9 → +8.8 pp** because the baseline rose 22.9 → 26.3, and binary accuracy fell **67.2% → 59.2%** as n went 61 → 524. Shard 0 was not a representative sample. **This is what Milestone E was for.**
 
 **Goal:** a frozen, written definition of how accuracy is computed — locked before any training run exists to be tempted by.
 
@@ -327,11 +333,12 @@ PyPI latest is **5.14.1**, a major release with breaking changes. Every Cosmos/Q
 
 **Still open**
 2. transformers 4.5x vs 5.x — on 4.57.6; upgrade is a separate, individually-verified task. Note `huggingface_hub` is pinned `<1.0` **because** of this, so the two move together.
-8. **New (from Milestone D):** how much of the finetuning gain is **output-vocabulary alignment** rather than improved perception? 39 of 90 zero-shot errors are right-idea-wrong-word. Mitigated by reporting format compliance as its own column, but the split needs quantifying once adapters exist — and it is interesting in its own right.
-9. **New (from Milestone D):** open-ended accuracy is **11.4%** at 224×224. If the five methods cannot be separated there, does the benchmark report binary and open-ended separately, or does the low ceiling invalidate the open-ended column? Decide with W3 data, not now.
+8. **From Milestone D, resized by E:** how much of the finetuning gain is **output-vocabulary alignment** rather than improved perception? At n=140 the format share of errors looked like 43%; at n=1,117 it is **28.8%** (209 of 725). Real, but **smaller than feared — 71.2% of errors are genuine misperception**, so most of the headroom is perception after all. Format compliance stays its own column; quantify the split once adapters exist.
+9. **From Milestone D, updated by E:** open-ended accuracy is **13.8%** (n=593), binary **59.2%** (n=524). If the five methods cannot be separated on open-ended questions, report binary and open-ended as separate columns. Decide with W3 data, not now.
+10. **New (from Milestone E):** scene clustering measured **ICC = 0.000** for the zero-shot model, so the naive CI is valid today. Do **adapters** induce scene-level correlation that the base model lacks? `src/eval.py` records `scene_icc` per run, so this answers itself in W4 — and if it turns non-zero, McNemar p-values need a cluster bootstrap.
 4. Vision-tower quantization policy — quantize the ViT or keep it fp16? Affects accuracy *and* the VRAM story. Decide with data in W4.
-6. **Eval metric definition** — exact-match on final answer vs. judged protocol. Now Milestone E, and **must be frozen before any training run exists to tempt post-hoc choices**.
 7. **New (from Milestone B):** `embed_tokens` is 311.2M params left in fp16 ≈ 622 MB = **42% of resident weights**, tied to `lm_head`. Is quantizing or shrinking the embedding table a legitimate lever for the edge story, or does it wreck quality? Nobody benchmarks this. Potentially a genuine contribution — worth a W4/W5 ablation.
 
 **✅ Resolved (cont.)**
+6. ~~Eval metric definition — exact-match vs judged protocol~~ — **done 2026-08-11, Milestone E.** Exact-match on a normalized answer against a **frozen 29-class vocabulary derived from `day-train`**; no judge, no cost, no nondeterminism. Frozen in [`eval-protocol.md`](./eval-protocol.md) before any adapter existed. Learned: the harder half of this question was not *which* metric but *which rows and which vocabulary* — deriving the answer set from the eval split was a genuine leak, and fixing it moved format compliance 72.1% → 81.3%, an effect easily large enough to be mistaken for a finding.
 5. ~~Metropolis dataset shortlist (§8)~~ — **done 2026-08-10, Milestone D.** `nuscenes-qa-mini`, fallback SUTD-TrafficQA. Learned: the intersection of {US-collected, image-based, ungated, ready-made QA, roadside} is **empty** in the public landscape — that is a reportable finding, not a failed search.

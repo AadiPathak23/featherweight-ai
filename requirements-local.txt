@@ -26,4 +26,11 @@ pillow
 # these two move together.
 huggingface_hub[cli]>=0.34,<1.0
 
+# Download accelerator for Xet-backed repos. OPTIONAL — nothing breaks without it;
+# huggingface_hub falls back to plain HTTP and says so on every download. Added
+# 2026-08-11 (Milestone E) after the ~5 GB nuscenes-qa-mini pull repeatedly hit
+# `Read timed out` against us.aws.cdn.hf.co and resumed in a loop. Listed so the
+# environment stays reproducible rather than quietly diverging from this file.
+hf_xet
+
 # trl is deferred to the training milestone (Week 3) — not needed yet.

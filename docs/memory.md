@@ -10,7 +10,25 @@
 
 ## 1. START HERE — session resume
 
-### 🔖 Where we left off — end of session 2026-08-10
+### 🔖 Where we left off — end of session 2026-08-11
+
+**Milestone E is complete. The eval protocol is frozen and benchmark row 1 is measured.**
+
+- **Protocol frozen in writing:** [`docs/eval-protocol.md`](./eval-protocol.md) — prompt, decoding, extraction rule, split, vocabulary, metrics. Changing it is a documented decision, not an edit.
+- **Frozen eval split:** `day-validation` shards 0–7 = **1,117 rows** (not 1,120 — shards 5–7 hold 139). Identity committed in `results/eval_split_manifest.jsonl` with a sha256 per image; pixels in gitignored `outputs/eval_split/` (85 MB PNG).
+- **Answer vocabulary frozen from `day-train`**, not from the eval split. **Saturated at 29 classes** — independently matching the nuScenes-QA paper.
+- **Benchmark row 1 (zero-shot, 4-bit NF4): 35.1% strict** vs a **26.3%** baseline = **+8.8 pp**. Two runs, all 1,117 raw outputs byte-identical.
+- `src/eval.py` is the harness every future row uses, `--adapter` included.
+
+**The three things this session found that Milestone D got wrong, all from measuring more rows:**
+
+1. **The delta over baseline is a third smaller than reported.** +12.9 pp → **+8.8 pp**. Accuracy barely moved (35.7 → 35.1) but the majority baseline rose 22.9 → 26.3. *Shard 0 was not a representative sample.*
+2. **Binary accuracy was overstated.** 67.2% (n=61) → **59.2%** (n=524). Milestone D's "+17 pp of real signal above chance" is really **+9.2 pp**. Nothing about the model changed — only n did.
+3. **Scene clustering turned out to be a non-issue, measured.** Feared design effect, built the machinery, measured **ICC = 0.000** on 270 scenes → deff 1.00, n_eff = 1,117. The naive CI stands. (Shard 0's ICC of 0.259 was an artifact of near-singleton clusters.) Machinery kept for W4, where adapters may induce correlation.
+
+---
+
+### 🗄️ Previous session — 2026-08-10
 
 **Milestone D is complete. The dataset question is settled.**
 
@@ -24,18 +42,21 @@ Last session ran the Week 2 dataset survey end to end. Ten candidates checked ag
 
 **The two things last session found that are easy to forget and expensive to rediscover:**
 
-1. **The images are 224×224**, not nuScenes' native 1600×900. Binary yes/no questions score **67.2%** (chance 50%) while open-ended ones collapse to **11.4%**. The blended 35.7% hides this completely — *always disaggregate*.
-2. **Much of the coming finetuning gain will be output-vocabulary alignment, not better perception.** 39 of 90 zero-shot errors are the model answering sensibly in the wrong words (`bike`→`bicycle`, `zero`→`0`). Carry format-compliance as its own benchmark column so the two effects stay separable, and do not report the jump as a perception win.
+1. **The images are 224×224**, not nuScenes' native 1600×900. Binary yes/no questions score **67.2%** (chance 50%) while open-ended ones collapse to **11.4%**. The blended 35.7% hides this completely — *always disaggregate*. → ⚠️ *Magnitudes superseded by §9: binary is **59.2%**, open-ended **13.8%**. The disaggregation lesson holds; these n=140 numbers do not.*
+2. **Much of the coming finetuning gain will be output-vocabulary alignment, not better perception.** 39 of 90 zero-shot errors are the model answering sensibly in the wrong words (`bike`→`bicycle`, `zero`→`0`). Carry format-compliance as its own benchmark column so the two effects stay separable, and do not report the jump as a perception win. → ⚠️ *Superseded by §9: the format share is **28.8%**, not 43%. Real, but smaller — most headroom is perception.*
 
-### ▶️ Next action — Milestone E, freeze the eval protocol
+### ▶️ Next action — Milestone F, fp16 stability harness
 
-**Do this first, before any adapter exists to tempt a post-hoc metric choice.** Write down and freeze: the answer-extraction rule, the prompt template, decoding params (greedy, `do_sample=False`), `max_new_tokens`, and the eval split. Then build `src/eval.py`.
+Insurance against the project's highest risk (§5), and the last thing standing between here and the Week 3 QLoRA run.
 
-- **Start from `scripts/zeroshot_probe.py`** — it is already most of the skeleton. Strict/lenient scoring, the normalize rule, the results schema and greedy decoding are all in place and working.
-- **Already banked:** re-running the probe reproduced **35.7 / 22.9 / 72.1 exactly**, so Milestone E's "identical across two runs" criterion is demonstrated for this harness.
-- **Still to decide:** how to freeze a proper eval split (the probe used only shard 0 of `day-validation`, 140 of ~2,229 rows), and whether to report binary and open-ended as separate columns rather than one blended accuracy.
+- Log per step: loss, grad-norm, live `GradScaler` scale factor.
+- **NaN/Inf tripwire** — halt on non-finite loss/grad-norm and dump the step index plus offending module. A run that silently NaNs and trains to completion on garbage is the expensive failure.
+- Instrument the **vision tower separately** — it is the documented fp16 overflow site.
+- **Reuse `vram()` from `src/eval.py`**, including `reset_peak_memory_stats()`.
+- Mitigation ladder decided in advance: lower initial scale → fp32 vision tower → lower LR → gradient clipping.
+- ✅ Success: a deliberately-unstable run (inflated LR) trips the tripwire and halts with a useful diagnostic.
 
-Then **Milestone F** — fp16 stability harness (NaN/Inf tripwire, loss-scale monitoring, per-module vision-tower grad-norms).
+**Open for W3/W4, not now:** open-ended accuracy is **13.8%**. If the five methods cannot be separated there, report binary and open-ended as separate columns (open question #9).
 
 ### ⚠️ Owed
 
@@ -49,7 +70,10 @@ Then **Milestone F** — fp16 stability harness (NaN/Inf tripwire, loss-scale mo
 | `scripts/check_env.py` | Milestone A. Runs unmodified on both local and Kaggle; reports `bf16_supported` vs `bf16_native` separately |
 | `scripts/infer_local.py` | Milestone B. 4-bit load + single-image inference. **Source of the `vram()` reset discipline — reuse it** |
 | `scripts/inspect_dataset.py` | Milestone D. Pulls ONE 457 MB shard, reports schema/QA/storage; dumps images to `outputs/dataset_peek/` |
-| `scripts/zeroshot_probe.py` | Milestone D go/no-go, and the **Milestone E skeleton** |
+| `scripts/zeroshot_probe.py` | Milestone D go/no-go. **Superseded by `src/eval.py`** — kept as the record of the dataset decision |
+| **`docs/eval-protocol.md`** | **FROZEN.** How accuracy is computed, for every benchmark row. Read before touching eval |
+| **`src/eval.py`** | **The eval harness.** Every benchmark row comes from here. `--adapter`, `--compare` (McNemar), `--shard0-only` (regression gate) |
+| `scripts/build_eval_split.py` | Builds + freezes the split and the answer vocabulary. `--verify` re-checks every sha256 |
 | `results/` | **Tracked** run records, small JSON only. Schema + rules in `results/README.md` |
 | `outputs/` | **Gitignored** scratch — images, dumps, anything regenerable |
 | `notebooks/kaggle_smoke_test.ipynb` | Milestone C. Thin launcher: clones the repo, runs `check_env.py` |
@@ -64,8 +88,8 @@ Then **Milestone F** — fp16 stability harness (NaN/Inf tripwire, loss-scale mo
 | **B** | 4-bit local inference | ✅ 2026-08-06. Peak **2.10 GiB** vs <5.0 GB target; **7–10 tok/s** (the Week 5 edge-target figure) |
 | **C** | Kaggle bridge | ✅ 2026-08-07. T4 x2; `check_env.py` runs unmodified from a clone; **bf16 confirmed absent in hardware** |
 | **D** | Dataset | ✅ 2026-08-10. `nuscenes-qa-mini`, verified by probe (§6) |
-| **E** | Eval protocol | ⬜ **NEXT** |
-| **F** | fp16 stability harness | ⬜ |
+| **E** | Eval protocol | ✅ 2026-08-11. Frozen in `eval-protocol.md`; row 1 = **35.1%** vs 26.3% baseline, reproducible (§9) |
+| **F** | fp16 stability harness | ⬜ **NEXT** |
 | W3+ | QLoRA run, DoRA/LoRA, edge latency, write-up | ⬜ |
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
@@ -281,14 +305,22 @@ The original criteria were re-derived mid-survey after two constraints were adde
 | Rows per shard | **140** → day-val ≈ 2,240, day-train ≈ 2,240, night ≈ 700 each. **Total ≈ 5,776** |
 | Split counts | ✅ **Reconciled.** The "3,068 total" figure was wrong; ~2,229 day + ~659 night per split is right. |
 | **`CAM_FRONT` resolution** | 🚨 **224×224** — pre-resized for CNN-era models. **nuScenes native is 1600×900.** |
-| Image storage | nested **`int64`** lists (H,W,3) — *not* encoded JPEG/PNG. 8 bytes per value that needs 1. |
+| Image storage | nested lists (H,W,3), *not* encoded JPEG/PNG. ⚠️ **CORRECTED 2026-08-11 — see below.** |
 | Waste factor | **22.3×** — 343.9 KB/row as stored vs **15.5 KB/row** as JPEG q92 |
 | **Real size** | **~87 MB** front-camera-only JPEG for the whole dataset, vs 19.8 GB published |
 | Distinct answers (shard) | 24 (paper claims 29 overall) |
 | **Majority-class baseline** | **22.9%** (`yes`). `yes`+`no` = **43.6%** of all answers — the benchmark is largely binary. |
 | Scenes | Boston confirmed visually in the sample (brick rowhouses, US crosswalk markings) |
 
-**Size is a non-issue and always was.** 19.8 GB → ~87 MB after dropping LiDAR + 5 of 6 views and encoding as JPEG. Preprocess once, attach as a Kaggle Dataset.
+**Size is a non-issue and always was.** 19.8 GB → ~87 MB after dropping LiDAR + 5 of 6 views and encoding as JPEG. Preprocess once, attach as a Kaggle Dataset. ✅ *Confirmed 2026-08-11: the frozen 1,117-row split is **85 MB** as lossless PNG.*
+
+#### ⚠️ Correction (2026-08-11) — the storage mechanism above was wrong
+
+The table said "nested **int64** lists — 8 bytes per value that needs 1." Read off the Arrow schema directly: the type is **`list<item: list<item: list<item: uint8>>>`**. The values are **uint8**, exactly as the dataset card declares.
+
+The 344 KB/row is real, but it comes from **int32 offset buffers on the nested lists** — roughly 4 bytes of offset per pixel triple — not from wide values. 224×224×3 = 147 KB of pixels carrying ~197 KB of list offsets.
+
+**The 22.3× waste-vs-JPEG conclusion stands; the stated cause did not.** Worth keeping as a caution: a number can be measured correctly and still be attributed to the wrong mechanism, and only the second kind of error survives into a paper's explanation section.
 
 ### 🚨 The 224×224 problem — the real risk, found only by downloading
 
@@ -323,10 +355,12 @@ Cosmos-Reason2-2B, 4-bit NF4, greedy, `max_new_tokens=48`, all **140 rows** of `
 
 #### The result is two different results
 
+> ⚠️ **These n=140 figures were superseded on 2026-08-11 by the 1,117-row frozen split (§9). The qualitative split is real; the magnitudes were not. Binary is 59.2%, not 67.2%. Cite §9.**
+
 | Question type | n | Accuracy | Reference |
 |---|---|---|---|
-| **Binary (yes/no)** | 61 | **67.2%** | chance = 50% → **+17 pp of real signal** |
-| **Open-ended** | 79 | **11.4%** | near-collapse |
+| **Binary (yes/no)** | 61 | **67.2%** | chance = 50% → +17 pp — *later measured at 59.2% (n=524), i.e. +9.2 pp* |
+| **Open-ended** | 79 | **11.4%** | near-collapse — *later 13.8% (n=593)* |
 
 224×224 supports coarse existence/presence judgements but **not** fine-grained identity, status or counting. That is exactly the resolution story, now measured rather than feared.
 
@@ -457,3 +491,75 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
   - **Newer is a different axis from applicable.** Cosmos3 is newer *and* useless here: wrong task (generation, not `image-text-to-text`), wrong size, and no proven `peft`/`bitsandbytes` path off the Qwen3-VL architecture that Milestone B already validated.
   - Standing rule reaffirmed: **check the API, not recall.** Claude's training cutoff predates the Cosmos3 releases, so every fact in D10 came from `huggingface.co/api/models` queried live.
   - `learning-log.md` restructured — Aadi's Milestone B answers moved out of HTML comments so they render, with `⚠️ Reconcile owed` blocks marking the four wrong mechanisms. **The wrong answers are kept, not deleted**; the gap is the pedagogical content.
+
+- **2026-08-11 — Milestone E ✅ COMPLETE. Eval protocol frozen; benchmark row 1 measured.** `docs/eval-protocol.md` written before any adapter exists. Frozen split = `day-validation` shards 0-7, **1,117 rows**, committed as a manifest with a sha256 per image. Answer vocabulary frozen from `day-train`, **saturated at 29 classes**. `src/eval.py` scored **35.1%** strict vs a **26.3%** baseline (+8.8 pp), reproduced byte-identically across two runs. Full record in §9.
+  - **The regression gate earned its place.** Before touching the new split, `src/eval.py --shard0-only` had to reproduce the probe's 35.7 / 35.7 / 22.9 / 67.2 / 11.4 on the same 140 rows — and did, exactly. Refactoring the harness and changing the data in one step would have made any discrepancy unattributable. **Change one thing at a time, and prove it.**
+  - **A bigger split did not change the score; it changed the claim.** Strict moved 35.7 → 35.1 (0.6 pp), but delta-over-baseline fell **+12.9 → +8.8 pp** because the majority baseline rose 22.9 → 26.3. **A metric can look stable while the thing you actually assert about it moves by a third.** Always re-check the baseline when the split changes.
+  - **Binary accuracy was overstated by 8 pp at n=61.** 67.2% → **59.2%** at n=524. Milestone D's "+17 pp of real signal" is **+9.2 pp**. Nothing about the model changed. **A percentage quoted without its n is not yet a result.**
+  - **Scene clustering: feared, instrumented, measured absent.** 4.14 questions/scene made correlated errors plausible, which would have inflated every confidence interval. Measured **ICC = 0.000** over 270 scenes → deff 1.00. Shard 0's ICC of 0.259 was an artifact of near-singleton clusters. Machinery kept for W4. **Build the instrument, then let it decide — do not assume the worry or dismiss it.**
+  - **Deriving the answer vocabulary from the eval split was a real bug in the probe**, not a stylistic preference: it made format compliance a moving target and leaked split information into a reported metric. Fixing it moved the number 72.1% → 81.3%, which is the size of an effect that could easily have been mistaken for a finding.
+  - **A `⚠️` in a progress message killed a 20-minute build** via Windows cp1252 `UnicodeEncodeError`, *after* every expensive step had succeeded. Fixed structurally with `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` in both entry points. **A logging call must never be able to destroy the run it reports on.**
+  - Loading PNGs instead of decoding nested int lists made eval **3.8× faster** (1.1 → 0.33 s/example), so a full 1,117-row run is ~6 min and the two-run determinism check stays cheap for the rest of the project.
+  - `hf_xet` installed (optional, download-path only) after repeated `Read timed out` against the HF CDN; recorded in `requirements-local.txt` with the reason.
+  - Corrected §6: `CAM_FRONT` values are **uint8**, not int64. The 344 KB/row is nested-list **int32 offset buffers**. The 22.3× conclusion stands, the mechanism did not — **a correctly measured number can still carry a wrong explanation, and only the explanation reaches the paper.**
+
+---
+
+## 9. Milestone E — frozen eval protocol & benchmark row 1 *(2026-08-11)*
+
+Protocol: [`docs/eval-protocol.md`](./eval-protocol.md). Harness: `src/eval.py`. Raw record: `results/eval_zeroshot.json`.
+
+### The frozen split
+
+| Item | Value |
+|---|---|
+| Split | `day-validation` shards 0–7, **1,117 rows** (shards 0–4 hold 140, shards 5–7 hold 139) |
+| Frozen by | `results/eval_split_manifest.jsonl` — sha256 per image; `--verify` re-checks |
+| Pixels | `outputs/eval_split/`, **85 MB lossless PNG**, gitignored and regenerable |
+| Scenes | **270** distinct `token`s → **4.14 questions/scene** |
+| Reserve | shards 8–15 deliberately never downloaded or scored |
+| Answer vocabulary | **29 classes**, from `day-train`, saturated (+24, +4, +1, +0, +0 over 5 shards) |
+
+### Benchmark row 1 — zero-shot Cosmos-Reason2-2B, 4-bit NF4
+
+| Metric | Value |
+|---|---|
+| **Strict exact-match** | **35.1%**  95% CI [32.4, 37.9] |
+| Majority baseline | **26.3%** (always `yes`) |
+| **Delta over baseline** | **+8.8 pp** |
+| Lenient | 35.2% — 1 example above strict |
+| Format compliance (in-vocab) | 81.3% |
+| Binary yes/no | **59.2%** (n=524, chance 50%) |
+| Open-ended | **13.8%** (n=593) |
+| Throughput | 0.33 s/example, 370 s total, peak VRAM **1.50 GiB** |
+| Determinism | ✅ two runs, **all 1,117 raw outputs byte-identical** |
+
+### What the bigger split changed — the point of Milestone E
+
+| | shard 0 (n=140) | frozen split (n=1,117) |
+|---|---|---|
+| Strict | 35.7% | 35.1% |
+| Majority baseline | 22.9% | **26.3%** |
+| **Delta over baseline** | **+12.9 pp** | **+8.8 pp** |
+| Binary | 67.2% (n=61) | **59.2%** (n=524) |
+| Open-ended | 11.4% (n=79) | **13.8%** (n=593) |
+| Questions/scene | 1.33 | **4.14** |
+
+**Accuracy barely moved; the claim did.** Headline accuracy fell 0.6 pp, but the delta over baseline fell by a third because the baseline rose 3.4 pp. Milestone D's "+17 pp of real binary signal" is really **+9.2 pp**. Nothing about the model changed between those two numbers — only n. **Shard 0 was not a representative sample of `day-validation`.**
+
+### Scene clustering — feared, measured, absent
+
+Questions cluster 4.14-per-scene, so correctness *could* have been correlated, inflating confidence. Measured: **ICC = 0.000** across 270 scenes (one-way ANOVA estimator, non-positive → clamped), design effect **1.00**, n_eff = 1,117. **The naive CI stands.**
+
+Shard 0 reported ICC = 0.259, an artifact of near-singleton clusters (1.33/scene); the full-split estimate is the trustworthy one. The machinery stays in `src/eval.py` — adapters in W4 may induce correlation that the zero-shot model does not.
+
+⚠️ **McNemar assumes independent pairs.** If clustering ever becomes non-zero, its p-values are optimistic by roughly the design effect, and a scene-level cluster bootstrap is required for any W4 comparison near p ≈ 0.05.
+
+### Error decomposition (725 errors)
+
+| Cause | n | Share |
+|---|---|---|
+| Prediction **outside** the vocabulary | 209 | 28.8% — format/synonym loss |
+| Prediction **in** vocabulary but wrong | 516 | **71.2% — genuine misperception** |
+
+Milestone D put the format share at 43% (39/90). At 8× the sample it is **28.8%**. The vocabulary-alignment concern (open question #8) is real but **smaller than Milestone D estimated** — most of the headroom is perception, not wording. Most common wrong predictions: `no` (128), `stopped` (88), `yes` (84), `taxi` (55).

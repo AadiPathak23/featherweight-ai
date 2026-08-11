@@ -161,3 +161,76 @@ happened, and whether it should have.*
         ran, rather than judged after seeing 35.7%?
      3. The model answers 'bike' when the gold answer is 'bicycle'. Finetuning
         will fix that fast. Why is that a REPORTING problem and not a win? -->
+
+
+---
+
+## Milestone E — eval protocol (2026-08-11)
+
+**Prediction (write this BEFORE the harness runs):**
+
+Zero-shot strict exact-match on the frozen **1,120-row** split will be **25%**,
+versus the **35.7%** measured on shard 0 alone (n=140).
+
+*My reasoning (committed 2026-08-11, before the harness ran):*
+
+> 25% it will be lower since it is zero shot
+
+> 📌 Noted at prediction time, not after: the question was why *1,120 rows* would
+> differ from *140 rows of the same split, same model, same protocol*. "It is
+> zero-shot" is true of both, so it explains the absolute level (~36% rather than
+> ~90%) but not the change. The prediction stands as written; what it is missing
+> is a claim about whether shard 0 is representative of day-validation.
+
+**Second prediction — the one that actually decides the benchmark:**
+
+*Asked: if QLoRA and LoRA land 2 pp apart, can this benchmark separate them, and
+under what test?*
+
+> I cant tell them apart and dont know how to answer this one
+
+> 📌 Honest, and the right answer to give. Worked through below in
+> "What I understand now" — this is the Week 4 machinery, so it is worth owning
+> rather than nodding at.
+
+
+**What actually happened:**
+
+Measured on the frozen 1,117-row split, 2026-08-11. Two runs, all 1,117 raw
+outputs byte-identical.
+
+| | shard 0 (n=140) | frozen split (n=1,117) |
+|---|---|---|
+| Strict exact-match | 35.7% | **35.1%** |
+| Majority baseline | 22.9% | **26.3%** |
+| **Delta over baseline** | **+12.9 pp** | **+8.8 pp** |
+| Binary yes/no | 67.2% (n=61) | **59.2%** (n=524) |
+| Open-ended | 11.4% (n=79) | **13.8%** (n=593) |
+
+**Your direction was right, your magnitude was not.** You predicted 25%, i.e. a
+drop of ~10.7 pp. The real drop was **0.6 pp**. Accuracy barely moved.
+
+<!-- But look at the third row before concluding the prediction was "nearly right
+     in the wrong way". Accuracy held almost constant while the delta over
+     baseline fell by a third, because the BASELINE rose 3.4 pp.
+
+     In your own words: if the model's score is unchanged but the baseline moved
+     up, has the model got worse? What exactly got worse? -->
+
+
+<!-- The other thing worth sitting with: binary accuracy fell 67.2% -> 59.2%.
+     Milestone D reported "+17 pp of real signal above chance" from n=61.
+     The true figure is +9.2 pp. Nothing about the model changed between those
+     two numbers. What changed, and what does that tell you about how much to
+     trust a percentage quoted without its n? -->
+
+
+**What I understand now:**
+
+<!-- 1. Why did the protocol have to be frozen BEFORE any adapter existed?
+        What specifically could have gone wrong if we had written eval.py after
+        the first QLoRA run?
+     2. The probe built its answer vocabulary from the eval split's own answers.
+        Name the two separate things that go wrong when you do that.
+     3. Shards 8-15 were deliberately left undownloaded. Why does it matter that
+        the reserve rows have never been scored? -->
