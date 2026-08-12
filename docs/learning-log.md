@@ -234,3 +234,120 @@ drop of ~10.7 pp. The real drop was **0.6 pp**. Accuracy barely moved.
         Name the two separate things that go wrong when you do that.
      3. Shards 8-15 were deliberately left undownloaded. Why does it matter that
         the reserve rows have never been scored? -->
+
+
+---
+
+## Milestone F — fp16 stability harness (2026-08-11)
+
+*This is the first milestone with a **backward pass** in it. Everything before
+this was forward-only inference, so fp16 could not really hurt us. Now it can.*
+
+**Prediction (committed 2026-08-11, before either run):**
+
+*1. Over ~50 steps of a healthy run, does the GradScaler scale factor go up, down,
+or stay flat?*
+
+> scale goes down
+
+*2. Under a deliberately inflated LR, which goes non-finite first — the loss or a
+gradient?*
+
+> gradient goes first
+
+> 📌 Noted at prediction time, not after: both answers give a direction with no
+> mechanism. That is fine as a first pass, but it means neither can be *partly*
+> right — there is nothing to check except the outcome. The reconcile below is
+> where the mechanism gets built, and question 2 in particular has a specific
+> chain of events behind it that is worth being able to trace.
+
+
+**What actually happened:**
+
+**Both predictions were right.** Measured 2026-08-11 on the 3060, 50 steps, LoRA r=8
+on 64 `day-train` rows.
+
+*1. Scale: 65536 → 1024.* Down, as you said. Six halvings, **all of them inside the
+first 17 steps**, then dead flat for the remaining 33.
+
+The mechanism behind the direction: 65536 is not a tuned starting point, it is
+deliberately *too high*. The scaler is **searching downward** for the largest
+multiplier that does not overflow fp16, and halving is how it searches. It is not
+decay. It also tries to climb back — `growth_interval=2000` steps without a skip
+doubles it again — which is why 50 steps only ever shows the downward half of the
+behaviour. On a real Week 3 run of thousands of steps you would see it settle and
+then oscillate up.
+
+*2. A gradient went non-finite first — and the loss never did at all.* Not in either
+run, not once, in 58 steps total.
+
+That is a stronger version of your answer than you claimed. Trace the sabotage run:
+
+| step | loss | what happened |
+|---|---|---|
+| 0–1 | 3.84, 0.85 | scaled gradients overflow, steps skipped — the scaler working |
+| 2 | 0.02 | scale reached 16384, **the step lands** — and lr=5.0 moves LoRA enormously |
+| 3 | **35.99** | the wrecked weights produce huge gradients → overflow |
+| 4–7 | 72.9, 35.9, 72.7, 36.0 | every step skipped. Weights frozen. Loss just oscillates by example |
+
+Exactly **one** optimizer step ever landed, and it destroyed the adapter. After that
+nothing changed at all — the loss is not diverging, it is *stuck*, bouncing between
+~36 and ~73 depending on which question came up.
+
+**This is the failure the whole milestone exists to catch, and it is worse than a
+NaN.** A NaN loss is loud. This run has a finite loss, no exception, no warning, and a
+progress bar that would have advanced happily for twelve hours on Kaggle, saved an
+adapter, and burned a chunk of a 30 hr/week quota — to produce the step-2 wreckage.
+`plan.md` specified the tripwire as *"halt on non-finite loss or grad-norm"*. **The
+loss half of that rule would never have fired here.** What caught it was the
+consecutive-skip rule, which exists only because the design had to distinguish "the
+scaler is working" from "the scaler has given up".
+
+*3. The unplanned finding — the ViT claim is no longer inherited, it is measured.*
+
+`memory.md` §5 has said since day one that "the ViT tower is the usual overflow site",
+on the authority of other people's write-ups. Now:
+
+| | overflows starting in vision | in language only |
+|---|---|---|
+| baseline (6 skips) | **6 / 6** | 0 |
+| sabotage (7 skips) | **7 / 7** | 0 |
+
+The language tower **never** overflowed without the vision tower overflowing too. The
+first non-finite parameter the sabotage run named was
+`model.visual.patch_embed.proj` — the patch embedding, the very first thing that
+touches a pixel.
+
+And a negative result from the forward hooks, which is why they were worth adding:
+**vision activations stayed finite in every step of both runs.** The overflow is in
+the *backward* pass, not the forward. "The ViT overflows" is true but imprecise —
+it is the ViT's *gradients*, not its activations.
+
+
+**What I understand now:**
+
+<!-- 1. The healthy run skipped 6 of its 50 steps and that was fine. The sabotage
+        run skipped 5 in a row and got halted. Both are "the scaler skipped a
+        step". In your own words: what is the difference between them, and why
+        can no single-step check tell them apart?
+
+     2. The sabotage run's loss stayed finite the whole time. Say plainly what
+        would have happened on Kaggle if the tripwire had only checked the loss.
+        Include what you'd have had at the end of it.
+
+     3. Only ONE optimizer step landed in the sabotage run, at step 2, and it did
+        all the damage. Why did the steps AFTER it stop landing -- and why is a
+        model that has stopped changing more dangerous than one that is visibly
+        exploding? -->
+
+
+**Prediction for Week 3 (write before the first real QLoRA run):**
+
+<!-- You now know: overflow starts in the vision tower every time, the scaler
+     settles around 1024, and peak VRAM here was 3.53 GiB on a 6 GB card at
+     batch size 1 with NO gradient checkpointing.
+
+     Kaggle's T4 has 14.6 GiB. Predict the batch size you think Week 3 can run
+     at, and say what you expect to be the thing that actually stops you going
+     higher. -->
+

@@ -13,12 +13,12 @@ byte-for-byte against the committed record.
 
 --- Two design decisions worth reading before changing anything -----------------
 
-1. WHY 1,120 ROWS (day-validation shards 0-7).
+1. WHY ~1,120 ROWS (day-validation shards 0-7; 1,117 as measured -- see below).
    The Milestone D probe used 140 rows. The 95% CI on a 35.7% score at n=140 is
    +/-7.9 pp, and LoRA / QLoRA / DoRA typically land within a few points of each
    other -- so that split would have reported five statistically identical numbers
    and the benchmark would have failed silently at the one thing it exists to do.
-   n=1,120 gives +/-2.8 pp unpaired, and much tighter paired (see docs/eval-protocol.md
+   n=1,117 gives +/-2.8 pp unpaired, and much tighter paired (see docs/eval-protocol.md
    on McNemar). Chosen by the confidence interval needed to rank methods, not by
    convenience.
 

@@ -22,7 +22,7 @@ What changed and why:
 
 Usage:
     python -m src.eval --shard0-only     # regression gate: must reproduce 35.7 / 22.9
-    python -m src.eval                   # the real thing: all 1,120 rows
+    python -m src.eval                   # the real thing: all 1,117 rows
     python -m src.eval --compare results/a.json results/b.json   # no GPU needed
 """
 
@@ -155,7 +155,7 @@ def mcnemar(b: int, c: int) -> tuple[float, str]:
 
     Concordant pairs carry no information about which method is better, so they
     are excluded by construction -- that is exactly why the paired test has more
-    power than comparing two independent confidence intervals, and why n=1,120
+    power than comparing two independent confidence intervals, and why n=1,117
     is enough to rank methods that differ by a couple of points.
     """
     n = b + c

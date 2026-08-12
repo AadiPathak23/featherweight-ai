@@ -94,7 +94,7 @@ apart.
 (one line per row: image filename, source shard, row index, `token`, question, answer,
 `sha256` of the PNG bytes).
 
-Pixels live in `outputs/eval_split/` (gitignored, regenerable, ~50 MB) as **lossless PNG**.
+Pixels live in `outputs/eval_split/` (gitignored, regenerable, **85 MB** measured) as **lossless PNG**.
 The manifest is tracked. The split's *identity* belongs in git; 50 MB of binary does not.
 `python scripts/build_eval_split.py --verify` re-checks every sha256 against the committed
 manifest.
@@ -112,7 +112,18 @@ not from convenience.
 widening, expanding into shards nobody has scored is honest; re-drawing rows from a pool
 already measured is not.
 
-### ⚠️ Scene correlation is NOT mild — it was under-measured
+### ⚠️ Scene correlation — this section's own conclusion was falsified. See the correction below.
+
+> **CORRECTION, 2026-08-11 (same day, after the full-split run).** Everything from here to
+> the end of this subsection was written *before* the harness measured the full split. The
+> measurement came back **ICC = 0.000, design effect 1.00, n_eff = 1,117** — scene
+> correlation is **absent** in the zero-shot model, and the naive interval stands unadjusted
+> (`memory.md` §9, `results/eval_zeroshot.json`). The text below is kept, not deleted,
+> because the sequence is the lesson — see *What actually happened* at the end.
+>
+> **No protocol rule changes and no run is invalidated.** The requirement to report both
+> intervals stays exactly as frozen, and `src/eval.py` still records `scene_icc` per run.
+> Only a prediction about what the number would be was wrong.
 
 An earlier draft of this document, written from shard 0 alone, said scene correlation was
 mild and effective n ≈ nominal n. **That was wrong**, and it is recorded here rather than
@@ -143,6 +154,34 @@ without re-running it.
 *Measured on shard 0 at the regression gate: ICC = 0.259. Its deff was only 1.09 because
 shard-0 clusters are small (1.33); on the full split, with 4.14 questions per scene, the
 same ICC produces a substantially larger design effect.*
+
+#### What actually happened — and why this section is worth keeping in full
+
+The sentence directly above is a **prediction**, and the full split falsified it:
+
+| | shard 0 (n=140) | full split (n=1,117) |
+|---|---|---|
+| ICC | 0.259 | **0.000** |
+| Design effect | 1.09 | **1.00** |
+| n_effective | 129 | **1,117** |
+
+Shard 0's ICC of 0.259 was an **artifact of near-singleton clusters**. With 1.33 questions
+per scene, most "clusters" hold a single question, and the one-way ANOVA estimator has
+almost no within-cluster variance to work with, so it attributes ordinary between-question
+variance to the scene. More data did not sharpen the estimate — it **removed a structure
+that was never there**.
+
+So this document contains three successive claims about one quantity: *mild* (draft, from
+shard 0, no measurement) → *not mild* (this section, from shard 0's ICC) → *absent*
+(measured, full split). The first was right, for the wrong reason. **The correction was
+more wrong than the thing it corrected**, and it was more confidently written, because it
+came with a number attached.
+
+The rule worth carrying into W4: **a small sample can manufacture a structure as easily as
+it can hide one**, and an estimator quoted without the n and the cluster sizes it was
+computed from is not yet evidence. The machinery stays regardless — adapters may induce
+scene correlation the base model does not (`plan.md` open question #10), and that is a
+question this file is now instrumented to answer rather than guess at.
 
 **Never evaluate on anything touched during training.** `day-train` is for training,
 `day-validation` shards 0–7 for scoring, `night-validation` for robustness only.
@@ -181,7 +220,7 @@ Two long-tail mismatches, both recorded rather than papered over:
 The two 29-class sets therefore share 28 classes. This is expected long-tail behaviour in a
 closed vocabulary, not a defect.
 
-### Format compliance moved 72.1% → 75.7%, and that is correct
+### Format compliance moved 72.1% → 75.7% **on the same 140 rows**, and that is correct
 
 The Milestone D probe scored in-vocabulary against the eval split's own **24** answers; the
 frozen protocol scores against the train-derived **29**. A larger legal set means more
@@ -189,6 +228,19 @@ predictions count as well-formed. **Both numbers are right for their own definit
 are not comparable, and only the 75.7% figure is on-protocol. Recorded because an
 unexplained 3.6 pp move in a benchmark column is exactly the kind of thing that should never
 be waved through.
+
+> **Clarification, 2026-08-11.** Both figures above are **n=140** — the probe and the
+> shard-0 regression gate, scored on identical rows so that only the vocabulary differs.
+> That is what makes the 3.6 pp attributable to the vocabulary change and nothing else.
+>
+> **Neither is the benchmark column.** Format compliance on the frozen 1,117-row split is
+> **81.3%** (`results/eval_zeroshot.json`, `in_vocab_pct`). Quote that one.
+>
+> Recorded because this section was misread within a day of being frozen — as a claim that
+> the benchmark column was 75.7%, contradicting the committed run. It was never wrong; it
+> was **missing its n**, which was enough to make a correct sentence unusable. §9 of
+> `memory.md` states the rule this violates: *a percentage quoted without its n is not yet a
+> result*. It applies to the document that states it.
 
 ---
 

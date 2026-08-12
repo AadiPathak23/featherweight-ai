@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
 > Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
-> Last updated: 2026-08-11 · **Week 1 complete. Week 2: D ✅ (dataset) and E ✅ (eval protocol frozen, benchmark row 1 = 35.1%) both complete. Milestone F is next.**
+> Last updated: 2026-08-11 · **Weeks 1 and 2 COMPLETE.** D ✅ dataset · E ✅ eval protocol frozen, benchmark row 1 = 35.1% · F ✅ fp16 tripwire, both criteria met. **Next: Week 3, first end-to-end QLoRA run on Kaggle.**
 
 ---
 
@@ -240,7 +240,15 @@ A written shortlist with verified size/license/access per candidate, one recomme
 
 ---
 
-#### Milestone F — fp16 stability harness
+#### Milestone F — fp16 stability harness ✅ **COMPLETE 2026-08-11**
+
+**Result:** `src/stability.py`. Both criteria met — a healthy fp16 LoRA run completes with 6 scaler skips and **no false alarm**; a sabotage run (lr 5.0) is **halted at step 7** naming `model.visual.patch_embed.proj`. The harness is self-verifying: exit 0 only when the outcome matches the mode's expectation. Full record in [`memory.md`](./memory.md) §10.
+
+> 🚨 **Step 2 of this plan was wrong, and the milestone found it.** It specified *"halt immediately on non-finite loss or grad-norm"*. **The loss never went non-finite** — not once in 58 steps across both runs. The sabotage run landed exactly **one** optimizer step, wrecked the adapter with it, then skipped every subsequent step: weights frozen, loss finite and oscillating between ~36 and ~73, progress bar advancing. A loss-only check would have let that train for 12 hours on Kaggle and save a garbage adapter. What caught it was the **consecutive-skip rule**, which only exists because the design started from *"how does this differ from the scaler working correctly?"*
+>
+> **Also measured, not inherited:** **13 of 13 overflows began in the vision tower**, the language tower never overflowing alone — §7's ViT claim is now this project's own measurement. But forward hooks logged **zero** non-finite *activations*, so it is the ViT's **gradients**, not its activations.
+>
+> **And training fits locally after all:** peak **3.53 GiB** at batch 1 with no gradient checkpointing, on the 6 GB 3060. §3 assumed local training was impossible; local dry-runs of the W3 loop are viable.
 
 **Goal:** detect divergence early and automatically, **before** Week 3 depends on it. This is insurance against the project's highest risk.
 
@@ -252,19 +260,19 @@ A written shortlist with verified size/license/access per candidate, one recomme
 5. Prepare the mitigation ladder in advance so it isn't invented under pressure: lower initial scale → fp32 vision tower → lower LR → gradient clipping.
 6. **Reuse `vram()` from `scripts/infer_local.py`**, including its `reset_peak_memory_stats()` — without the reset, phase deltas silently read zero and the Week 4/5 VRAM columns become wrong.
 
-**✅ Success criterion**
-A short deliberately-unstable run (inflated LR) trips the tripwire and halts with a useful diagnostic, rather than producing quiet garbage.
+**✅ Success criterion — MET.** A short deliberately-unstable run (inflated LR) trips the tripwire and halts with a useful diagnostic, rather than producing quiet garbage.
 
-**Risks**
-- Harness itself perturbs timing → keep logging cheap; wall-clock is a benchmark column and must stay honest
-- Tripwire too sensitive → occasional scaler halving is *normal*; alert on sustained patterns, not single events
-- fp16 turns out to be unfixable → escalation path in open question #3: fp32 vision tower, tighter scaling, or a supplementary bf16-capable free tier with Kaggle still primary
+**Risks — how they actually resolved**
+- Harness itself perturbs timing → ✅ non-issue. 24 vision forward hooks + per-group norms cost ~1.0 s/step total; logging is not measurable against the forward pass.
+- Tripwire too sensitive → 🎯 **this was the real design problem, and the plan called it correctly.** The baseline run skipped **6 of 50** steps and had to not halt; the sabotage run skipped **5 consecutively** and had to halt. Both are "the scaler skipped a step" and **no single-step check can separate them** — the rule has to be about persistence.
+- fp16 turns out to be unfixable → ✅ not triggered. A sane LR is stable; the scaler settles at **1024** from 65536 within 17 steps. The escalation path is implemented as flags (`--init-scale`, `--fp32-vision`, `--lr`, `--clip-grad`) so a W3 divergence is answered with a command line, not a redesign.
+- ⚠️ **Unlisted risk that nearly made the harness blind:** LoRA target modules. The vision tower names its projections `qkv`/`proj`; the language model uses `q_proj`/`k_proj`/`v_proj`/`o_proj`. The tutorial-standard list attaches **nothing** to the ViT, giving zero vision gradients and a permanently clean vision column on the exact site being watched. `build_trainable()` now hard-fails if trainable vision params = 0.
 
 ---
 
 ### Weeks 3+ *(outline)*
 
-- **W3** — first end-to-end QLoRA run on Kaggle; checkpoint/resume across the 12 hr cap; eval harness green
+- **W3** — first end-to-end QLoRA run on Kaggle; checkpoint/resume across the 12 hr cap; eval harness green. **Import the tripwire from `src/stability.py`** — §5-F shows its failure mode is invisible to a loss check. `requirements-kaggle.txt` still does not exist and is the one untested piece (torch 2.10.0+cu128 / py3.12.13 vs local 2.13.0+cu130).
 - **W4** — DoRA + LoRA runs under matched VRAM/wall-clock budgets; seed variance; ViT-quantization ablation
 - **W5** — latency/VRAM measurement on the 3060 as the *edge target*; adapter merge + 4-bit inference profiling
 - **W6+** — write-up, release adapters, repo polish; hooks for Project #2 (multi-LoRA serving)

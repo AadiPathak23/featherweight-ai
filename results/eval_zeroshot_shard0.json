@@ -1,7 +1,7 @@
 {
   "run": "eval_zeroshot",
-  "timestamp_utc": "2026-08-11T07:57:20+00:00",
-  "git_sha": "03bf6c5-dirty",
+  "timestamp_utc": "2026-08-12T06:42:51+00:00",
+  "git_sha": "9ed088b-dirty",
   "protocol": "docs/eval-protocol.md (frozen 2026-08-11)",
   "config": {
     "model": "nvidia/Cosmos-Reason2-2B",
@@ -42,8 +42,8 @@
     "open_ended_acc": 11.39240506329114
   },
   "timings": {
-    "seconds_total": 40.16779759991914,
-    "seconds_per_example": 0.2869128399994224
+    "seconds_total": 64.76959990011528,
+    "seconds_per_example": 0.4626399992865377
   },
   "peak_vram_gib": 1.5005521774291992,
   "records": [

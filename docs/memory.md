@@ -4,15 +4,31 @@
 >
 > 🧭 **How we work — read before doing anything.** Aadi is deliberately working above his current level and wants to *learn*, not receive finished code. Per milestone: **frame** briefly → **Aadi writes a prediction before anything runs** → **build in small pieces**, explaining each non-obvious decision where it appears → **reconcile** prediction vs reality, digging hardest where he was wrong → **Aadi logs it in his own words**. Label each thing **Tier 1** (learn deeply: LoRA/DoRA math, quantization, fp16 stability, experiment design), **Tier 2** (know the shape: HF/PEFT APIs), or **Tier 3** (plumbing: venv, git, Kaggle UI). No black boxes — every flag and magic number gets a reason. Say plainly what is measured fact vs. estimate vs. untested bet. Where he can reason it out, ask and wait. One milestone per session; depth over throughput.
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
-> Last updated: 2026-08-11
+> Last updated: 2026-08-11 (evening — Milestone F, Week 2 closed)
 
 ---
 
 ## 1. START HERE — session resume
 
-### 🔖 Where we left off — end of session 2026-08-11
+### 🔖 Where we left off — end of session 2026-08-11 (evening)
 
-**Milestone E is complete. The eval protocol is frozen and benchmark row 1 is measured.**
+**Milestone F is complete. WEEK 2 IS CLOSED. Everything now points at the Week 3 QLoRA run.**
+
+- **`src/stability.py` is the fp16 tripwire**, and both criteria passed: a healthy run completes with 6 scaler skips and no false alarm; a sabotage run (lr 5.0) is halted at step 7 naming the offending module. Full record in **§10**.
+- **Training fits locally — peak 3.53 GiB** at batch 1, no gradient checkpointing, on the 6 GB 3060. §2 assumed local training was impossible; local *dry-runs* of the Week 3 loop are viable.
+- **`eval-protocol.md` corrected** (§4's falsified ICC prediction, §5's missing `n`). No rule changed, no run invalidated — the regression gate still reproduces 35.7 / 22.9 exactly.
+
+**The three things this session found, in order of how expensive they would have been:**
+
+1. **A finite loss is not a healthy run.** The loss never went non-finite in 58 steps across both runs, so `plan.md`'s specified *"halt on non-finite loss"* would have caught **nothing**. Sabotage landed exactly **one** optimizer step, wrecked the adapter, then skipped every step after — weights frozen, loss finite and oscillating, progress bar advancing. On Kaggle: 12 hours and a saved garbage adapter. The **consecutive-skip rule** is what caught it.
+2. **The ViT-overflow claim is now measured, and narrower than stated.** **13 of 13 overflows began in the vision tower**; the language tower never overflowed alone. But forward hooks logged **zero** non-finite *activations* — it is the ViT's **gradients**, not its activations. Same shape as the §6 uint8 correction: right number, wrong mechanism.
+3. **The vision tower uses `qkv`/`proj`, not `q_proj`/`k_proj`/`v_proj`.** The tutorial-standard LoRA target list would have attached nothing to the ViT → zero vision gradients → a permanently reassuring empty column on the exact site being watched. The harness now hard-fails on that condition.
+
+---
+
+### 🗄️ Previous milestone — Milestone E (2026-08-11, earlier)
+
+**Eval protocol frozen; benchmark row 1 measured.**
 
 - **Protocol frozen in writing:** [`docs/eval-protocol.md`](./eval-protocol.md) — prompt, decoding, extraction rule, split, vocabulary, metrics. Changing it is a documented decision, not an edit.
 - **Frozen eval split:** `day-validation` shards 0–7 = **1,117 rows** (not 1,120 — shards 5–7 hold 139). Identity committed in `results/eval_split_manifest.jsonl` with a sha256 per image; pixels in gitignored `outputs/eval_split/` (85 MB PNG).
@@ -20,7 +36,7 @@
 - **Benchmark row 1 (zero-shot, 4-bit NF4): 35.1% strict** vs a **26.3%** baseline = **+8.8 pp**. Two runs, all 1,117 raw outputs byte-identical.
 - `src/eval.py` is the harness every future row uses, `--adapter` included.
 
-**The three things this session found that Milestone D got wrong, all from measuring more rows:**
+**The three things it found that Milestone D got wrong, all from measuring more rows:**
 
 1. **The delta over baseline is a third smaller than reported.** +12.9 pp → **+8.8 pp**. Accuracy barely moved (35.7 → 35.1) but the majority baseline rose 22.9 → 26.3. *Shard 0 was not a representative sample.*
 2. **Binary accuracy was overstated.** 67.2% (n=61) → **59.2%** (n=524). Milestone D's "+17 pp of real signal above chance" is really **+9.2 pp**. Nothing about the model changed — only n did.
@@ -28,7 +44,7 @@
 
 ---
 
-### 🗄️ Previous session — 2026-08-10
+### 🗄️ Earlier session — 2026-08-10
 
 **Milestone D is complete. The dataset question is settled.**
 
@@ -45,16 +61,16 @@ Last session ran the Week 2 dataset survey end to end. Ten candidates checked ag
 1. **The images are 224×224**, not nuScenes' native 1600×900. Binary yes/no questions score **67.2%** (chance 50%) while open-ended ones collapse to **11.4%**. The blended 35.7% hides this completely — *always disaggregate*. → ⚠️ *Magnitudes superseded by §9: binary is **59.2%**, open-ended **13.8%**. The disaggregation lesson holds; these n=140 numbers do not.*
 2. **Much of the coming finetuning gain will be output-vocabulary alignment, not better perception.** 39 of 90 zero-shot errors are the model answering sensibly in the wrong words (`bike`→`bicycle`, `zero`→`0`). Carry format-compliance as its own benchmark column so the two effects stay separable, and do not report the jump as a perception win. → ⚠️ *Superseded by §9: the format share is **28.8%**, not 43%. Real, but smaller — most headroom is perception.*
 
-### ▶️ Next action — Milestone F, fp16 stability harness
+### ▶️ Next action — Week 3, the first end-to-end QLoRA run on Kaggle
 
-Insurance against the project's highest risk (§5), and the last thing standing between here and the Week 3 QLoRA run.
+Week 2 built every prerequisite: a frozen protocol, a scored baseline row, and a tripwire. W3 is the first run that produces **benchmark row 2**.
 
-- Log per step: loss, grad-norm, live `GradScaler` scale factor.
-- **NaN/Inf tripwire** — halt on non-finite loss/grad-norm and dump the step index plus offending module. A run that silently NaNs and trains to completion on garbage is the expensive failure.
-- Instrument the **vision tower separately** — it is the documented fp16 overflow site.
-- **Reuse `vram()` from `src/eval.py`**, including `reset_peak_memory_stats()`.
-- Mitigation ladder decided in advance: lower initial scale → fp32 vision tower → lower LR → gradient clipping.
-- ✅ Success: a deliberately-unstable run (inflated LR) trips the tripwire and halts with a useful diagnostic.
+- **Port the loop to Kaggle.** `requirements-kaggle.txt` does not exist yet — Kaggle is torch 2.10.0+cu128 / Python 3.12.13 against local 2.13.0+cu130 (§2). This is the one genuinely untested piece.
+- **Import the tripwire from `src/stability.py`.** It is not decoration: §10 shows the failure it catches is invisible to a loss check, and a 12 hr session is exactly where that costs the most.
+- **Checkpoint/resume across the 12 hr session cap.** `/kaggle/working` is lost on teardown beyond the save.
+- **Budget from measured numbers, not guesses:** peak 3.53 GiB at batch 1 local, ~1.0 s/step on a 3060; the T4 has 14.6 GiB. Batch size is a prediction Aadi owes in `learning-log.md` before the run.
+- **Score it with `src/eval.py --adapter`, unmodified.** A row scored by different code is not a row.
+- ⚠️ **Expect the vision tower to be where trouble starts** — 13 of 13 overflows began there (§10). `--fp32-vision` is ladder step 2 and already implemented.
 
 **Open for W3/W4, not now:** open-ended accuracy is **13.8%**. If the five methods cannot be separated there, report binary and open-ended as separate columns (open question #9).
 
@@ -85,6 +101,7 @@ Insurance against the project's highest risk (§5), and the last thing standing 
 | `scripts/build_eval_split.py` | Builds + freezes the split and the answer vocabulary. `--verify` re-checks every sha256 |
 | `results/` | **Tracked** run records, small JSON only. Schema + rules in `results/README.md` |
 | `outputs/` | **Gitignored** scratch — images, dumps, anything regenerable |
+| **`src/stability.py`** | **Milestone F. The fp16 tripwire.** `--sabotage` proves it fires; ladder flags `--init-scale` / `--fp32-vision` / `--clip-grad`. **Week 3 imports this** |
 | `notebooks/kaggle_smoke_test.ipynb` | Milestone C. Thin launcher: clones the repo, runs `check_env.py` |
 
 **Repo:** <https://github.com/AadiPathak23/featherweight-ai> — public. Renamed 2026-08-10 from `featherweigh-ai` (old name was missing the `t`); GitHub redirects the old URL but nothing in the repo relies on that. `gh` CLI is **not** installed; pushes use stored HTTPS credentials. Git identity `AadiPathak23 / aadipathak2323@gmail.com`.
@@ -98,8 +115,9 @@ Insurance against the project's highest risk (§5), and the last thing standing 
 | **C** | Kaggle bridge | ✅ 2026-08-07. T4 x2; `check_env.py` runs unmodified from a clone; **bf16 confirmed absent in hardware** |
 | **D** | Dataset | ✅ 2026-08-10. `nuscenes-qa-mini`, verified by probe (§6) |
 | **E** | Eval protocol | ✅ 2026-08-11. Frozen in `eval-protocol.md`; row 1 = **35.1%** vs 26.3% baseline, reproducible (§9) |
-| **F** | fp16 stability harness | ⬜ **NEXT** |
-| W3+ | QLoRA run, DoRA/LoRA, edge latency, write-up | ⬜ |
+| **F** | fp16 stability harness | ✅ 2026-08-11. Tripwire catches deliberate divergence; **a finite loss would not have** (§10) |
+| **W3** | First end-to-end QLoRA run on Kaggle | ⬜ **NEXT** |
+| W4+ | DoRA/LoRA under matched budgets, edge latency, write-up | ⬜ |
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
 
@@ -514,6 +532,19 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
 
 - **2026-08-11 (end of session) — housekeeping.** Commit convention set: no `Co-Authored-By: Claude` trailer, author stays `AadiPathak23`. Existing 9 commits carrying it are **deliberately left alone** — rewriting them would change every SHA and invalidate the `git_sha` provenance inside `results/*.json`. `learning-log.md` is the only open thread: Milestone B reconciles, the Milestone E follow-up questions, and empty C/D scaffolds, all waiting on Aadi.
 
+- **2026-08-11 — Milestone F ✅ COMPLETE. Week 2 closed.** `src/stability.py` built and both criteria met: a healthy fp16 LoRA run completes with 6 scaler skips and no false alarm; a sabotage run (lr 5.0) is halted at step 7 naming `model.visual.patch_embed.proj`. Full record in §10.
+  - **A finite loss is not a healthy run — the single most important thing this milestone found.** The loss never went non-finite in 58 steps across both runs, so `plan.md`'s specified *"halt on non-finite loss"* rule would have caught **nothing**. The sabotage run landed exactly **one** optimizer step, wrecked the adapter with it, then skipped every subsequent step — weights frozen, loss finite and oscillating, progress bar advancing. On Kaggle that is 12 hours and a saved adapter of pure garbage. **What caught it was the consecutive-skip rule**, and that rule only exists because the design started from "how does this differ from the scaler working correctly?" rather than from "what does a broken run look like?"
+  - **Instrument the thing you fear, then let it answer.** §5's "the ViT is the overflow site" was inherited from other people's write-ups. Measured here: **13 of 13 overflows across both runs began in the vision tower; the language tower never overflowed alone.** The claim is now this project's own measurement.
+  - **...but the mechanism was narrower than the claim.** Forward hooks on all 24 vision blocks logged **zero** non-finite activations. The overflow is in the **backward** pass — ViT *gradients*, not ViT activations. Same shape of error as the §6 uint8/int32-offset correction: the number was right and the stated mechanism was not, and only the mechanism reaches the paper.
+  - **Module names were discovered, not assumed, and that decided the milestone.** The vision tower uses `qkv`/`proj`; the language model uses `q_proj`/`k_proj`/`v_proj`/`o_proj`. The tutorial-standard target list would have put LoRA nowhere near the ViT → no vision gradients → a permanently clean vision column on the exact site being watched. `build_trainable()` now hard-fails if trainable vision params = 0. **A blind instrument reporting "fine" is worse than no instrument.**
+  - **Training fits locally after all: peak 3.53 GiB** at batch 1 with no gradient checkpointing, on a 6 GB card. `prepare_model_for_kbit_training` costs **+0.59 GiB** — the fp32 upcast of `embed_tokens`, exactly the tensor §3 flagged as 42% of resident weights. Local dry-runs of the Week 3 loop are viable, which §2 had assumed they would not be.
+  - Aadi predicted both outcomes correctly (scale falls; a gradient goes non-finite before the loss) — direction right, mechanism not yet written. Reconcile and the three follow-up questions are in `learning-log.md`.
+
+- **2026-08-11 — `eval-protocol.md` corrected (not changed).** Two statements in the frozen document were wrong or unusable. **No protocol rule moved and no run was invalidated** — §9's re-run of the shard-0 regression gate still reproduces 35.7 / 35.7 / 22.9 / 75.7 / 67.2 / 11.4 exactly.
+  - **§4's scene-correlation conclusion was falsified by its own measurement.** The section predicted a "substantially larger design effect" on the full split; the measurement returned **ICC = 0.000, deff 1.00**. The document's history on that one quantity runs *mild* (draft, unmeasured) → *not mild* (§4, from shard 0) → *absent* (measured). **The first claim was right, and the correction was more wrong than the thing it corrected — and more confident, because it arrived with a number attached.** Shard 0's ICC of 0.259 was near-singleton clusters manufacturing structure: at 1.33 questions/scene the ANOVA estimator has no within-cluster variance to work with. **A small sample can invent a structure as easily as it can hide one.**
+  - **§5 was never wrong — it was missing its `n`, which was enough to make it unusable.** "Format compliance moved 72.1% → 75.7%" compares the *same 140 rows* under two vocabularies, which is the correct comparison. But it reads as a claim about the benchmark column, and the benchmark column is **81.3%** (n=1,117). It was misread that way within a day of being frozen — by the next session, reading it as a contradiction of the committed run. §9's own rule (*a percentage quoted without its n is not yet a result*) applies to the document that states it.
+  - Also fixed: `~50 MB` → **85 MB** for `outputs/eval_split/`, and five stale **1,120**s (the planned count) → **1,117** (the measured one) across `results/README.md`, `src/eval.py` and `scripts/build_eval_split.py`. Aadi's learning-log entries keep 1,120 deliberately — they are the historical record of what he predicted at the time.
+
 ---
 
 ## 9. Milestone E — frozen eval protocol & benchmark row 1 *(2026-08-11)*
@@ -574,3 +605,75 @@ Shard 0 reported ICC = 0.259, an artifact of near-singleton clusters (1.33/scene
 | Prediction **in** vocabulary but wrong | 516 | **71.2% — genuine misperception** |
 
 Milestone D put the format share at 43% (39/90). At 8× the sample it is **28.8%**. The vocabulary-alignment concern (open question #8) is real but **smaller than Milestone D estimated** — most of the headroom is perception, not wording. Most common wrong predictions: `no` (128), `stopped` (88), `yes` (84), `taxi` (55).
+
+---
+
+## 10. Milestone F — fp16 stability harness *(2026-08-11)*
+
+Harness: `src/stability.py`. Records: `results/stability_baseline.json`, `results/stability_sabotage.json`.
+Both runs on the 3060, LoRA r=8, batch 1, 64 `day-train` rows, **no gradient checkpointing**.
+
+### Result — both success criteria met
+
+| Run | Outcome | Exit |
+|---|---|---|
+| baseline (lr 1e-4, 50 steps) | completed, all finite, **6 skipped steps correctly not treated as divergence** | PASS |
+| sabotage (lr 5.0) | **tripwire halted it at step 7**, naming `model.visual.patch_embed.proj` | PASS |
+
+The harness is self-verifying: exit 0 only when the outcome matches what the mode expects. **A `--sabotage` run that completes cleanly is a failed milestone**, because a tripwire that misses deliberate divergence would miss the real thing.
+
+### 🚨 The most important finding — a finite loss is not a healthy run
+
+**The loss never went non-finite. Not once, in 58 steps across both runs.**
+
+`plan.md` §5-F specified the tripwire as *"halt on non-finite loss or grad-norm"*. **The loss half of that rule would have caught nothing.** The sabotage run:
+
+| step | loss | what happened |
+|---|---|---|
+| 0–1 | 3.84, 0.85 | scaled-gradient overflow, steps skipped — the scaler working normally |
+| 2 | 0.02 | scale reaches 16384, **the only step that ever lands**; lr=5.0 wrecks the adapter |
+| 3–7 | 36.0, 72.9, 35.9, 72.7, 36.0 | every step skipped. Weights frozen at the wreckage; loss just oscillates by example |
+
+Exactly **one** optimizer step landed in the entire run. Afterwards nothing changed — the loss is not diverging, it is **stuck**. No exception, no warning, a finite loss, and a run that would have advanced happily for 12 hours on Kaggle, saved an adapter, and burned quota to produce the step-2 wreckage.
+
+**What caught it was the consecutive-skip rule** (5 in a row), which exists only because the design had to separate *"the scaler is working"* from *"the scaler has given up"*. Both look identical at any single step.
+
+### ✅ The ViT-overflow claim is now measured on this model, not inherited
+
+§5 has asserted since day one that "the ViT tower is the usual overflow site", on the authority of other people's write-ups. Measured here:
+
+| | overflows starting in vision | language-only |
+|---|---|---|
+| baseline (6 skips) | **6 / 6** | **0** |
+| sabotage (7 skips) | **7 / 7** | **0** |
+
+The language tower **never** overflowed without the vision tower overflowing first. Sabotage named `model.visual.patch_embed.proj` — the patch embedding, the first module to touch a pixel.
+
+⚠️ **But the mechanism is narrower than "the ViT overflows".** Forward hooks on all 24 vision blocks recorded **zero** non-finite activations in either run. The overflow is in the **backward pass** — it is the ViT's *gradients*, not its activations. Anything mitigating this (open question #4, the fp32-vision ladder step) must target gradient magnitude, not forward numerics.
+
+### Measured numbers worth carrying to Week 3
+
+| Fact | Value |
+|---|---|
+| **Peak VRAM, training** | **3.53 GiB** — batch 1, no gradient checkpointing, on a 6 GB card |
+| `prepare_model_for_kbit_training` cost | **+0.59 GiB** resident (1.47 → 2.06 GiB) |
+| Trainable params (LoRA r=8) | 4,411,392 — 3,211,264 language + **1,200,128 vision** |
+| Throughput | ~1.0 s/step local; the 50-step baseline ran in 58 s |
+| Scaler settling point | **1024** (from 65536, six halvings, all within the first 17 steps) |
+
+**The +0.59 GiB is `embed_tokens`,** as §3 predicted it would be: `prepare_model_for_kbit_training` upcasts every non-4bit param to fp32, and that tensor is 311.2M params = 42% of resident weights. Measured, not discovered by an OOM.
+
+### ⚠️ The trap that would have made this harness blind
+
+LoRA target modules were **discovered from the model, not assumed**. The vision tower names its attention projections **`qkv` / `proj`**; the language model uses `q_proj` / `k_proj` / `v_proj` / `o_proj`. Every QLoRA tutorial lists the second set.
+
+Targeting only those would have attached **no adapter anywhere near the ViT** → zero vision-tower gradients → a permanently empty, permanently reassuring vision column, on the exact site the milestone exists to watch. `build_trainable()` now **refuses to start** if the trainable vision-param count is zero, because a blind instrument that reports "fine" is worse than no instrument.
+
+### Mitigation ladder — decided in advance, not under pressure
+
+1. lower `--init-scale` — overflow in the first 0–2 steps
+2. `--fp32-vision` — vision norms go non-finite before language norms *(the case actually observed)*
+3. lower `--lr` — loss climbs steadily before going non-finite
+4. `--clip-grad` — norms spike intermittently but recover
+
+All four are implemented flags, so the response to a Week 3 divergence is a command line, not a redesign.
