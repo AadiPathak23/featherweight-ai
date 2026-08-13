@@ -351,3 +351,95 @@ it is the ViT's *gradients*, not its activations.
      at, and say what you expect to be the thing that actually stops you going
      higher. -->
 
+
+---
+
+## Week 3 — the QLoRA loop, and the leak that stopped it (2026-08-12)
+
+*This entry is out of the usual order on purpose. The session's biggest finding
+arrived before any prediction could be made about it, because nobody thought to
+predict it — which is itself the lesson.*
+
+**What happened, in one paragraph:**
+
+The Week 3 training-pool builder ran a train/eval image-overlap check that was
+written expecting to print `0`. It printed **235**. Of the 241 images in
+`day-train` shards 0–3, **235 also appear in the frozen eval split, with
+byte-identical PNGs**. Only 6 images of `day-train` sit outside it. But **0 of 560
+`(image, question, answer)` triples are shared** — so the answers do not leak, only
+the pixels do. `day-train` and `day-validation` are not two sets of images. They
+are two sets of *questions about the same ~276 keyframes*. The eval split moved to
+`night-validation` (measured intersection with day: exactly **0** images), and the
+training pool became the whole day domain. Full record: `memory.md` D11.
+
+**Questions to answer in your own words:**
+
+<!-- 1. The check was a HARD FAILURE (exit non-zero, refuse to write the
+        manifest) rather than a warning. Say what would have happened if it had
+        been a warning printed above a successful build. Be specific about what
+        the accuracy number would have looked like.
+
+     2. `token` was called a "scene" everywhere in the docs. It is a KEYFRAME.
+        Explain, in your own words, how that one wrong word is what let the leak
+        sit unnoticed through all of Milestone E. What did "270 distinct scenes"
+        make you picture, and what is actually there?
+
+     3. Row 1 (35.1% zero-shot) is NOT invalidated by any of this, but a
+        finetuned row would have been. Why does the leak damage one and not the
+        other? Answer in terms of what "training" does that "zero-shot" does not.
+
+     4. The answer vocabulary needed no change at all — night has 0 answers
+        outside it. Milestone E insisted the vocabulary be derived from
+        day-train rather than from the eval split, and at the time that looked
+        like pedantry about a 3.6 pp number. What did that decision buy here? -->
+
+**Prediction 1 — zero-shot on night.**
+
+> ⚠️ **This one was overtaken, and the reason is recorded rather than hidden.** The
+> night zero-shot run is the go/no-go for the whole split change — if night floors
+> out at the majority baseline, nothing downstream is worth building — so it was
+> run before the prediction was captured. **Its predictive value is gone.** The
+> thresholds below were still pre-registered before the number existed, and the
+> mechanism question is still worth answering; treat it as a "explain the result"
+> rather than a "call the result". Predictions 2 and 3 below are genuinely sealed.
+
+<!-- Day zero-shot was 35.1% strict against a 26.3% majority baseline (+8.8 pp).
+     Night's majority baseline is 24.9%.
+
+     Pre-registered thresholds, set before the number exists: >=10 pp over
+     baseline commits the split, 3-10 pp is marginal, <3 pp is a floor effect and
+     night cannot rank methods at all.
+
+     Where does night land, and what is the DELTA over 24.9%?
+
+     Then the part that matters more than the number: memory.md §6 measured that
+     224x224 supports presence judgements (binary 59.2%) but not identity or
+     counting (open-ended 13.8%). Darkness attacks something different from what
+     resolution attacks. Which of binary / open-ended do you expect night to hurt
+     more, and why? -->
+
+**Prediction 2 — batch size on a T4 (owed since Milestone F):**
+
+<!-- Measured: 3.53 GiB peak at batch 1, no gradient checkpointing, on the 3060.
+     Of that, 1.47 GiB is the 4-bit weights and +0.59 GiB is the fp32 upcast of
+     embed_tokens. LoRA r=8 is 4,411,392 trainable params. Every image is
+     224x224, so every example costs the same ~247 vision tokens.
+     The T4 has 14.6 GiB, ~14.4 usable.
+
+     What physical batch size fits, and what is the binding constraint?
+
+     The mechanism is the answer, not the number: which parts of that 3.53 GiB
+     scale with batch size and which do not -- and WHY those particular parts
+     fall on either side of the line. `src/train.py --probe-batch` measures the
+     curve, so your reasoning is checkable against two points, not one. -->
+
+**Prediction 3 — QLoRA after ~1 hour, day -> night:**
+
+<!-- This is now a DOMAIN-SHIFT result: trained on day, scored on night.
+
+     On day, 209 of 725 zero-shot errors (28.8%) were the model answering
+     sensibly in the wrong words; the other 71.2% were genuine misperception.
+
+     Where does strict accuracy land on night? And which half moves -- does the
+     vocabulary-alignment gain survive the day->night shift, or is it the
+     perception half that changes? Say why. -->

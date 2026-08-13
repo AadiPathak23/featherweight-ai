@@ -7,9 +7,10 @@ appears in the paper and did not come out of here, it does not belong there.
 Ported from scripts/zeroshot_probe.py, which was built as this file's skeleton.
 What changed and why:
 
-  - Rows come from the FROZEN MANIFEST (results/eval_split_manifest.jsonl), not a
-    live Arrow shard. The split is now a committed artifact, not a slice decided
-    at call time.
+  - Rows come from a FROZEN MANIFEST, not a live Arrow shard. The split is a
+    committed artifact, not a slice decided at call time. See SPLITS below: the
+    benchmark moved from "day" to "night" on 2026-08-12 because day-train and
+    day-validation share their images.
   - The answer vocabulary comes from results/answer_vocab.json, derived from
     day-TRAIN. The probe derived it from the eval split's own answers, which made
     format compliance a moving target and leaked split information into a reported
@@ -49,9 +50,38 @@ MODEL_ID = "nvidia/Cosmos-Reason2-2B"
 
 GIB = 1024**3
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MANIFEST = REPO_ROOT / "results" / "eval_split_manifest.jsonl"
 VOCAB_PATH = REPO_ROOT / "results" / "answer_vocab.json"
-IMG_DIR = REPO_ROOT / "outputs" / "eval_split"
+
+# TWO EVAL SPLITS EXIST, AND THE BENCHMARK MOVED FROM ONE TO THE OTHER (2026-08-12).
+#
+#   "day"   day-validation shards 0-7, 1,117 rows. The Milestone E split. It produced
+#           benchmark row 1 (35.1%) and it is still the ONLY split the shard-0
+#           regression gate can run against. Kept, not deleted -- deleting it would
+#           orphan results/eval_zeroshot.json and the gate that proves the harness
+#           has not drifted.
+#
+#   "night" night-validation shards 0-4. THE CURRENT BENCHMARK SPLIT. The day split
+#           had to be retired for evaluation because day-train and day-validation
+#           are not disjoint sets of IMAGES -- they are two sets of QUESTIONS about
+#           the same ~276 keyframes (235/235 shared images byte-identical by sha256,
+#           measured 2026-08-12). Any adapter trained on day would have been scored
+#           on pixels it trained on. Night is a different set of drives, so the
+#           day/night axis gives a split that is disjoint by construction rather
+#           than by the dataset's own (misleading) train/validation labels.
+#
+# Zero-shot rows are unaffected by the leak -- nothing is trained -- so row 1 remains
+# a valid measurement OF THE DAY SPLIT. It is simply not comparable to a night row.
+SPLITS = {
+    "night": {
+        "manifest": REPO_ROOT / "results" / "eval_split_night_manifest.jsonl",
+        "images": REPO_ROOT / "outputs" / "eval_split_night",
+    },
+    "day": {
+        "manifest": REPO_ROOT / "results" / "eval_split_manifest.jsonl",
+        "images": REPO_ROOT / "outputs" / "eval_split",
+    },
+}
+DEFAULT_SPLIT = "night"
 
 # FROZEN — docs/eval-protocol.md §2. Byte-exact. Changing this invalidates every
 # run scored before the change.
@@ -213,11 +243,13 @@ def vram(label: str) -> tuple[float, float]:
 # Data
 # --------------------------------------------------------------------------- #
 
-def load_split(shard0_only: bool, limit: int | None) -> tuple[list[dict], bool]:
+def load_split(split: str, shard0_only: bool, limit: int | None) -> tuple[list[dict], bool]:
     """Returns (rows, is_full_split)."""
-    if not MANIFEST.exists():
-        raise SystemExit(f"missing {MANIFEST}\nRun: python scripts/build_eval_split.py")
-    rows = [json.loads(x) for x in MANIFEST.read_text(encoding="utf-8").splitlines() if x.strip()]
+    manifest = SPLITS[split]["manifest"]
+    if not manifest.exists():
+        raise SystemExit(f"missing {manifest}\n"
+                         f"Run: python scripts/build_eval_split.py --split {split}")
+    rows = [json.loads(x) for x in manifest.read_text(encoding="utf-8").splitlines() if x.strip()]
     full = True
 
     if shard0_only:
@@ -325,8 +357,12 @@ def run_compare(path_a: Path, path_b: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--adapter", type=str, default=None, help="path to a PEFT adapter")
+    ap.add_argument("--split", choices=sorted(SPLITS), default=DEFAULT_SPLIT,
+                    help="'night' is the benchmark split; 'day' is the retired "
+                         "Milestone E split, kept for the regression gate")
     ap.add_argument("--shard0-only", action="store_true",
-                    help="regression gate: the 140 rows the Milestone D probe used")
+                    help="regression gate: the 140 rows the Milestone D probe used "
+                         "(implies --split day — those rows only exist there)")
     ap.add_argument("--limit", type=int, default=None, help="first N rows (iteration only)")
     ap.add_argument("--out", type=str, default=None, help="results filename")
     ap.add_argument("--run-name", type=str, default="eval_zeroshot")
@@ -342,7 +378,13 @@ def main() -> int:
     import torch
     from PIL import Image
 
-    rows, full_split = load_split(args.shard0_only, args.limit)
+    # The shard-0 regression gate is defined on the DAY split -- those 140 rows are
+    # day-validation shard 0 and do not exist anywhere else. Forcing it here rather
+    # than erroring means the gate keeps working with no flags, unchanged, forever.
+    split = "day" if args.shard0_only else args.split
+    img_dir = SPLITS[split]["images"]
+
+    rows, full_split = load_split(split, args.shard0_only, args.limit)
     vocab = load_vocab()
 
     golds = [normalize(r["answer"]) for r in rows]
@@ -353,7 +395,7 @@ def main() -> int:
     torch.cuda.reset_peak_memory_stats()
     print(f"\nModel   : {MODEL_ID}" + (f"  + adapter {args.adapter}" if args.adapter else ""))
     print(f"Device  : {torch.cuda.get_device_name(0)}")
-    print(f"Split   : {len(rows)} rows   full_split={full_split}")
+    print(f"Split   : {split}  ({len(rows)} rows, full_split={full_split})")
     print(f"Vocab   : {len(vocab)} classes (from day-train)")
     print(f"Baseline: {majority:.1f}%  (always {majority_answer!r})\n")
 
@@ -365,7 +407,7 @@ def main() -> int:
     t_start = time.perf_counter()
 
     for i, row in enumerate(rows):
-        image = Image.open(IMG_DIR / row["image"])
+        image = Image.open(img_dir / row["image"])
         messages = [{
             "role": "user",
             "content": [
@@ -417,17 +459,55 @@ def main() -> int:
     b_hits = sum(x["strict"] for x in binary)
     o_hits = sum(x["strict"] for x in open_ended)
 
+    # ------------------------------------------------------------------ #
+    # THE PER-QUESTION-TYPE PRIOR BASELINE — added 2026-08-12, and it is the
+    # honest reference, not the global majority class.
+    #
+    # WHY IT WAS NEEDED. The global majority baseline answers `yes` to
+    # EVERYTHING, including "what colour is the truck". No real system would do
+    # that, so it is a straw man: a model that merely learns to answer yes/no to
+    # yes/no questions and a common noun to everything else beats it by a wide
+    # margin with ZERO perception. Question type is readable straight off the
+    # question text ("are there any..." vs "what/how many..."), so this strategy
+    # needs no image, no training and no understanding.
+    #
+    # Measured the day this was added: zero-shot scores 35.1% on day against a
+    # 33.4% prior (+1.7 pp) and 31.9% on night against a 31.9% prior (+0.0 pp).
+    # The headline "+8.8 pp over baseline" in memory.md §9 is therefore mostly
+    # answer-type routing, not perception. Reporting only the global baseline
+    # would have carried that overstatement into the paper.
+    #
+    # This is the number that says whether a run learned to SEE. Every row must
+    # carry it next to the accuracy.
+    prior_hits = 0
+    prior_parts = {}
+    for label, subset in (("binary", binary), ("open_ended", open_ended)):
+        if not subset:
+            continue
+        best_answer, best_n = Counter(normalize(x["gold"]) for x in subset).most_common(1)[0]
+        prior_hits += best_n
+        prior_parts[label] = {"best_constant": best_answer, "n": len(subset),
+                              "acc": 100 * best_n / len(subset)}
+    prior = 100 * prior_hits / n
+
     print("\n" + "=" * 72)
     print(f"strict exact-match : {strict:5.1f}%   95% CI [{lo:.1f}, {hi:.1f}]   <- reported")
     print(f"  cluster-adjusted : {strict:5.1f}%   95% CI [{clo:.1f}, {chi:.1f}]   "
           f"(ICC={icc:.3f}, {len(by_scene)} scenes, deff={deff:.2f}, n_eff={n_eff:.0f})")
     print(f"lenient            : {lenient:5.1f}%   (diagnostic only)")
     print(f"majority baseline  : {majority:5.1f}%   (always {majority_answer!r})")
-    print(f"delta over baseline: {strict - majority:+5.1f} pp")
+    print(f"  delta over it    : {strict - majority:+5.1f} pp   (weak baseline — see below)")
+    print(f"per-type PRIOR     : {prior:5.1f}%   "
+          + "  ".join(f"{k}:{v['best_constant']!r}={v['acc']:.1f}%" for k, v in prior_parts.items()))
+    print(f"  DELTA OVER PRIOR : {strict - prior:+5.1f} pp   <- perception actually demonstrated")
     print(f"format compliance  : {100*in_vocab/n:5.1f}%   (in frozen vocabulary)")
     print("-" * 72)
-    print(f"binary (yes/no)    : {100*b_hits/max(len(binary),1):5.1f}%   n={len(binary):4d}  (chance 50%)")
-    print(f"open-ended         : {100*o_hits/max(len(open_ended),1):5.1f}%   n={len(open_ended):4d}")
+    b_triv = 100 * max(Counter(normalize(x["gold"]) for x in binary).values()) / len(binary) if binary else 0.0
+    o_triv = 100 * max(Counter(normalize(x["gold"]) for x in open_ended).values()) / len(open_ended) if open_ended else 0.0
+    print(f"binary (yes/no)    : {100*b_hits/max(len(binary),1):5.1f}%   n={len(binary):4d}  "
+          f"best constant {b_triv:.1f}%  -> {100*b_hits/max(len(binary),1)-b_triv:+.1f} pp")
+    print(f"open-ended         : {100*o_hits/max(len(open_ended),1):5.1f}%   n={len(open_ended):4d}  "
+          f"best constant {o_triv:.1f}%  -> {100*o_hits/max(len(open_ended),1)-o_triv:+.1f} pp")
     print("=" * 72)
     print(f"\n{n} examples in {elapsed:.0f}s ({elapsed/n:.2f}s each)   peak VRAM {peak:.2f} GiB")
     if not full_split:
@@ -445,7 +525,10 @@ def main() -> int:
             "model": MODEL_ID,
             "adapter": args.adapter,
             "dataset": "KevinNotSmile/nuscenes-qa-mini",
-            "split": "day-validation shards 0-7 (frozen manifest)",
+            # Which split, recorded per run: a night row and a day row are two
+            # different benchmarks and must never be compared as if they were one.
+            "split": split,
+            "split_manifest": str(SPLITS[split]["manifest"].relative_to(REPO_ROOT)),
             "full_split": full_split,
             "n": n,
             "quantization": "4-bit nf4 + double quant, compute fp16",
@@ -475,11 +558,19 @@ def main() -> int:
             "majority_baseline": majority,
             "majority_answer": majority_answer,
             "delta_over_baseline_pp": strict - majority,
+            # The honest reference. Answering the most common answer OF EACH
+            # QUESTION TYPE requires no image and no training, and it beats the
+            # global majority class by ~7 pp on both splits. Quote this delta.
+            "prior_baseline": prior,
+            "prior_baseline_parts": prior_parts,
+            "delta_over_prior_pp": strict - prior,
             "in_vocab_pct": 100 * in_vocab / n,
             "binary_n": len(binary),
             "binary_acc": 100 * b_hits / max(len(binary), 1),
+            "binary_best_constant": b_triv,
             "open_ended_n": len(open_ended),
             "open_ended_acc": 100 * o_hits / max(len(open_ended), 1),
+            "open_ended_best_constant": o_triv,
         },
         "timings": {"seconds_total": elapsed, "seconds_per_example": elapsed / n},
         "peak_vram_gib": peak,

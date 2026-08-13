@@ -4,15 +4,97 @@
 >
 > 🧭 **How we work — read before doing anything.** Aadi is deliberately working above his current level and wants to *learn*, not receive finished code. Per milestone: **frame** briefly → **Aadi writes a prediction before anything runs** → **build in small pieces**, explaining each non-obvious decision where it appears → **reconcile** prediction vs reality, digging hardest where he was wrong → **Aadi logs it in his own words**. Label each thing **Tier 1** (learn deeply: LoRA/DoRA math, quantization, fp16 stability, experiment design), **Tier 2** (know the shape: HF/PEFT APIs), or **Tier 3** (plumbing: venv, git, Kaggle UI). No black boxes — every flag and magic number gets a reason. Say plainly what is measured fact vs. estimate vs. untested bet. Where he can reason it out, ask and wait. One milestone per session; depth over throughput.
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
-> Last updated: 2026-08-12 (session close — Milestone F pushed, Week 2 complete)
+> Last updated: 2026-08-12 (session close — Week 3 half built; **D11: the eval split moved day → night after the leak check fired**, and the night zero-shot landed exactly on a no-perception baseline)
 
 ---
 
 ## 1. START HERE — session resume
 
-### 🔖 Where we left off — end of session 2026-08-11 (evening)
+### 🔖 Where we left off — end of session 2026-08-12 (morning)
 
-**Milestone F is complete. WEEK 2 IS CLOSED. Everything now points at the Week 3 QLoRA run.**
+**Week 3 is half built, and it stopped for a reason nobody predicted: the dataset's own train/validation split shares its images. The eval split moved `day` → `night` (D11) before a single training step ran. Then the night zero-shot showed the model scoring *exactly* at a baseline that needs no perception at all.**
+
+#### ▶️ FIRST THING NEXT SESSION — the decisive experiment, already decided
+
+**Run the full local QLoRA training and see whether finetuning beats the no-perception prior.** Aadi's call, made after seeing the night numbers. It costs **no Kaggle quota** (training fits locally at 3.53 GiB, Milestone F) and it answers the only question that now matters: *can any finetuning method extract real perception from 224×224 night images, or do all five methods converge on the answer prior and leave the benchmark unable to rank anything?*
+
+Run in this order — the first command is cheap and gates the rest:
+
+```bash
+python -m src.train --max-steps 12 --lr 5.0 --warmup 1 --grad-accum 1   # tripwire MUST halt this
+python -m src.train --budget-minutes 60 --batch-size 1 --grad-accum 4 --lr 1e-4 --run-name qlora
+python -m src.eval --split night --adapter outputs/adapters/qlora --run-name eval_qlora_night
+python -m src.eval --shard0-only            # regression gate, must still reproduce 35.7 / 22.9
+```
+
+**Success is `strict > 31.9%` by a real margin — NOT `strict > 24.9%`.** See the prior-baseline finding below; beating the global majority baseline proves nothing.
+
+#### 🚨 Finding 1 — the dataset's train/validation split leaks images (D11)
+
+The Week 3 pool builder's leak check was written expecting to print `0`. It printed **235**. Of 241 images in `day-train` shards 0–3, **235 are also in the frozen day eval split, byte-identical by sha256**; only 6 images (10 rows) sit outside it. But **0 of 560 `(image, question, answer)` triples are shared** — the answers do not leak, the pixels do.
+
+`day-train` and `day-validation` are two sets of **questions about the same ~276 keyframes**. Full record + the fix in **§7 D11** and `eval-protocol.md` **Amendment 1**.
+
+- **Eval split is now `night-validation` shards 0–4** — 659 rows, 115 images, `day ∩ night = 0` images (measured, both directions).
+- **Training pool is the whole `day` domain**, both of its splits, since the distinction carries no information.
+- ⚠️ **`night-train` is disqualified as training data** — it shares **113 of its 116 images** with the eval split. Measuring that is what makes the current setup safe.
+- **Benchmark row 1 (35.1% on day) survives** — zero-shot, so nothing leaked. It is a *day* number and must never sit in the same column as a night one.
+- **The answer vocabulary needed no change**: night has **0** out-of-vocabulary answers. Milestone E's insistence that the vocabulary come from `day-train` rather than the eval split is exactly what made the split replaceable for free.
+
+#### 🚨 Finding 2 — the reported "delta over baseline" was measured against a straw man
+
+Night zero-shot: **31.9% strict**, 24.9% global majority → +7.0 pp, which reads like signal. It is not.
+
+| | DAY (n=1,117) | NIGHT (n=659) |
+|---|---|---|
+| Zero-shot strict | 35.1% | **31.9%** |
+| Global majority (`always yes`) | 26.3% | 24.9% |
+| Delta — *what §9 reports* | +8.8 pp | +7.0 pp |
+| **Per-question-type prior** (`yes` to yes/no, `car` to the rest) | **33.4%** | **31.9%** |
+| **Delta over the prior** | **+1.7 pp** | **+0.0 pp** |
+| Binary | 59.2% vs 56.1% trivial | **51.2% vs 54.1% trivial → −3.0 pp** |
+| Open-ended | 13.8% vs 13.3% trivial | 15.4% vs 12.9% trivial |
+
+**On night, zero-shot Cosmos-Reason2 is exactly as accurate as answering `yes` to every yes/no question and `car` to everything else — 210/659 either way.** On binary questions it is *worse* than the trivial strategy.
+
+The global majority baseline answers `yes` to *"what colour is the truck"*. No real system does that. Question type is readable straight off the question text, so routing by type needs **no image, no training, no understanding** — and beats the global baseline by ~7 pp on both splits. **`src/eval.py` now computes `prior_baseline` and `delta_over_prior_pp` on every run.** Quote that delta.
+
+⚠️ This does **not** yet condemn the dataset. Zero-shot is a **lower bound**: format compliance is only 80.6% and the model has never seen the task. Finetuning may unlock perception the zero-shot number cannot show. That is precisely what the run above tests.
+
+#### ⏸️ Two predictions still genuinely sealed — capture BEFORE running
+
+Neither has been measured, so both are still worth writing (prompts already in `learning-log.md`):
+
+- **#2, batch size on a 14.6 GiB T4** — `--probe-batch` was deliberately skipped, because it only informs the *Kaggle* batch size. Measured input: 3.53 GiB at batch 1 (1.47 GiB weights + 0.59 GiB fp32 upcast), sequences only **~96 tokens** (≈49 vision + ~40 text — much shorter than §3's 247, because `max_pixels` caps 224×224 inputs).
+- **#3, QLoRA day → night** — does the adapter beat **31.9%**, and is the gain format alignment (which the prior already has, so it earns nothing) or real perception?
+
+⚠️ **#1 (night zero-shot) was overtaken** — it was the go/no-go and had to run. Recorded as such in `learning-log.md` rather than quietly dropped.
+
+#### 🔧 State of the working tree
+
+**Built and committed this session:**
+
+| File | State |
+|---|---|
+| `src/train.py` | **New.** Wall-clock budget, padded collation, grad accum, `--probe-batch`, Milestone F tripwire imported unchanged. **Collation verified correct on CPU** — supervised spans contiguous, aligned to each example's own prompt boundary, no pad or prompt token ever supervised. **The loop itself has never run.** |
+| `scripts/build_train_pool.py` | **New.** Day-domain pool + the leak check that found D11. |
+| `requirements-kaggle.txt` | **New. Untested** — verified only by running it on Kaggle. Deliberately omits torch. |
+| `notebooks/kaggle_qlora_train.ipynb` | **New.** Thin launcher. Never run. |
+| `src/eval.py` | `--split night\|day`; `--shard0-only` forces `day`; **new prior-baseline metrics.** |
+| `scripts/build_eval_split.py` | `--split`; vocabulary rebuild now opt-in (`--rebuild-vocab`) so the frozen artifact cannot move silently. |
+| `src/stability.py` | One **additive, default-preserving** change: `build_trainable(..., lora_alpha=None, lora_dropout=0.0)`. Milestone F's results are unaffected — the defaults reproduce it exactly. Shared rather than copied because it holds the §10 hard-fail on zero trainable vision params. |
+
+**Two defaults deliberately set against the reflex:** `--clip-grad` defaults **off** (it is ladder step 4, a mitigation for a problem F measured as absent at lr 1e-4; enabling it would change the numerics away from the validated configuration and mask the gradients the tripwire watches), and `build_eval_split.py` no longer re-derives the answer vocabulary by default.
+
+**✅ The training pool is built and the leak check passes.** `results/train_pool_manifest.jsonl` (575 KB, tracked) — **1,817 rows over 276 images, 6.58 questions/image, SHARED IMAGES = 0**, 25.9% majority (`yes`), 47.4% binary. Pixels: `outputs/train_pool/`, 138 MB, gitignored and regenerable at a measured 74 images/min.
+
+**Not yet done, in priority order:** the tripwire check on `train.py` · the 60 min local QLoRA run · `eval --adapter` on night · the shard-0 regression gate re-run · `--probe-batch`.
+
+---
+
+### 🗄️ Previous session — Milestone F (2026-08-11 evening)
+
+**Milestone F is complete. WEEK 2 IS CLOSED.**
 
 - **`src/stability.py` is the fp16 tripwire**, and both criteria passed: a healthy run completes with 6 scaler skips and no false alarm; a sabotage run (lr 5.0) is halted at step 7 naming the offending module. Full record in **§10**.
 - **Training fits locally — peak 3.53 GiB** at batch 1, no gradient checkpointing, on the 6 GB 3060. §2 assumed local training was impossible; local *dry-runs* of the Week 3 loop are viable.
@@ -99,9 +181,13 @@ Week 2 built every prerequisite: a frozen protocol, a scored baseline row, and a
 | `scripts/infer_local.py` | Milestone B. 4-bit load + single-image inference. **Source of the `vram()` reset discipline — reuse it** |
 | `scripts/inspect_dataset.py` | Milestone D. Pulls ONE 457 MB shard, reports schema/QA/storage; dumps images to `outputs/dataset_peek/` |
 | `scripts/zeroshot_probe.py` | Milestone D go/no-go. **Superseded by `src/eval.py`** — kept as the record of the dataset decision |
-| **`docs/eval-protocol.md`** | **FROZEN.** How accuracy is computed, for every benchmark row. Read before touching eval |
-| **`src/eval.py`** | **The eval harness.** Every benchmark row comes from here. `--adapter`, `--compare` (McNemar), `--shard0-only` (regression gate) |
-| `scripts/build_eval_split.py` | Builds + freezes the split and the answer vocabulary. `--verify` re-checks every sha256 |
+| **`docs/eval-protocol.md`** | **FROZEN + AMENDMENT 1 (2026-08-12).** How accuracy is computed, for every benchmark row. **Read Amendment 1 first** — the eval split moved day → night |
+| **`src/eval.py`** | **The eval harness.** Every benchmark row comes from here. `--split night\|day`, `--adapter`, `--compare` (McNemar), `--shard0-only` (regression gate, forces `day`) |
+| `scripts/build_eval_split.py` | Builds + freezes an eval split and the answer vocabulary. `--split night\|day`, `--verify` re-checks every sha256, `--rebuild-vocab` is off by default |
+| **`scripts/build_train_pool.py`** | **W3.** Builds the day-domain training pool + the **hard image-leak check that found D11**. `--verify` |
+| **`src/train.py`** | **W3. The QLoRA loop.** Wall-clock budget, padded batching + grad accum, `--probe-batch`, imports the Milestone F tripwire unchanged |
+| `requirements-kaggle.txt` | Kaggle pins. **Deliberately excludes torch** — the image's is CUDA-matched. Untested until run on Kaggle |
+| `notebooks/kaggle_qlora_train.ipynb` | W3 launcher: clone → install → build data → probe → train → eval → McNemar → copy artifacts out |
 | `results/` | **Tracked** run records, small JSON only. Schema + rules in `results/README.md` |
 | `outputs/` | **Gitignored** scratch — images, dumps, anything regenerable |
 | **`src/stability.py`** | **Milestone F. The fp16 tripwire.** `--sabotage` proves it fires; ladder flags `--init-scale` / `--fp32-vision` / `--clip-grad`. **Week 3 imports this** |
@@ -117,9 +203,9 @@ Week 2 built every prerequisite: a frozen protocol, a scored baseline row, and a
 | **B** | 4-bit local inference | ✅ 2026-08-06. Peak **2.10 GiB** vs <5.0 GB target; **7–10 tok/s** (the Week 5 edge-target figure) |
 | **C** | Kaggle bridge | ✅ 2026-08-07. T4 x2; `check_env.py` runs unmodified from a clone; **bf16 confirmed absent in hardware** |
 | **D** | Dataset | ✅ 2026-08-10. `nuscenes-qa-mini`, verified by probe (§6) |
-| **E** | Eval protocol | ✅ 2026-08-11. Frozen in `eval-protocol.md`; row 1 = **35.1%** vs 26.3% baseline, reproducible (§9) |
+| **E** | Eval protocol | ✅ 2026-08-11. Frozen in `eval-protocol.md`; row 1 = **35.1%** vs 26.3% baseline, reproducible (§9). ⚠️ Split retired 2026-08-12 by D11 — row 1 stands, the split does not |
 | **F** | fp16 stability harness | ✅ 2026-08-11. Tripwire catches deliberate divergence; **a finite loss would not have** (§10) |
-| **W3** | First end-to-end QLoRA run on Kaggle | ⬜ **NEXT** |
+| **W3** | First end-to-end QLoRA run on Kaggle | 🟡 **IN PROGRESS.** Loop, pool builder, Kaggle bridge and notebook built 2026-08-12; **D11 found and fixed mid-build**. Local dry-run + night row 1 still owed |
 | W4+ | DoRA/LoRA under matched budgets, edge latency, write-up | ⬜ |
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
@@ -479,6 +565,39 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
 
 ---
 
+### 2026-08-12
+
+**D11 — The eval split moves `day-validation` → `night-validation`. The dataset's own train/validation split leaks images.** *(All figures measured 2026-08-12 by `scripts/build_train_pool.py`'s leak check and the follow-up analysis — not inferred.)*
+
+*What was found.* The Week 3 training-pool builder ran an image-overlap check written in the expectation that it would print `0`. It printed **235**.
+
+| | |
+|---|---|
+| Images in `day-train` shards 0–3 | 241 |
+| …also present in the frozen day eval split | **235** |
+| …with **byte-identical PNGs** (sha256) | **235 of 235** |
+| `day-train` images *outside* the eval split | **6 images / 10 rows** |
+| Shared `(image, question, answer)` triples | **0 of 560** |
+| Distinct images across 13 day shards (1,817 rows) | **276** |
+
+**`day-train` and `day-validation` are two sets of *questions* about one shared pool of ~276 keyframes, not two sets of images.** The answers do not leak. The pixels leak almost totally. There is no usable clean training data inside `day-train`: six images.
+
+*Why night.* Measured: `day ∩ night-validation = 0` images, `day ∩ night-train = 0` images. Day and night are different drives, so the day/night axis is disjoint **by construction** — unlike the dataset's own train/validation labels, which this exercise proved cannot be trusted. Cost: one download. Price paid: the benchmark is now a **day → night domain-shift** evaluation and must be reported as that claim, not as in-domain accuracy.
+
+*What survives.* Benchmark row 1 (35.1% on day) **stands** — it is zero-shot, so nothing leaked; it is simply not comparable to a night row. The shard-0 regression gate stands on the day split (`--shard0-only` forces `--split day`). The 29-class answer vocabulary needed **no change**: night contains **0 out-of-vocabulary answers**. That §5 of `eval-protocol.md` insisted the vocabulary be external to the eval split is precisely what made the eval split replaceable at zero cost.
+
+*Alternative rejected:* re-partitioning the day domain by image. It preserves the in-domain claim but still requires re-freezing the split and re-measuring row 1, and it cannot remove the near-duplicate-frame problem either.
+
+*Three things not to lose:*
+
+1. **`token` is a keyframe id, not a scene id.** §9 and `eval-protocol.md` §4 both call it a scene. A nuScenes drive contributes many near-identical frames ~0.5 s apart. **The mislabel is what hid the leak** — "270 distinct scenes" reads as 270 independent situations, and "train vs validation" reads as a split over them.
+2. **§9's ICC = 0.000 was measured under that mislabel, on the retired split.** It says nothing about night, which is **5.73 questions/image over 115 images** — far more clustered than day's 4.14 over 270.
+3. **Night is disjoint but not independent.** 115 keyframes are not 115 situations. Consecutive frames of one night drive are nearly the same picture. Quote the clustered interval.
+
+*The check itself is the lesson.* It was a hard failure, not a warning, purely on the principle that this project has twice measured a right number with a wrong mechanism. Had it printed a warning above a successful build, every W3 and W4 row would have trained on its own eval images — and the accuracy number would have looked completely normal.
+
+---
+
 ## 8. State log
 
 *(Append-only, newest last.)*
@@ -554,11 +673,25 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
   - **§5 was never wrong — it was missing its `n`, which was enough to make it unusable.** "Format compliance moved 72.1% → 75.7%" compares the *same 140 rows* under two vocabularies, which is the correct comparison. But it reads as a claim about the benchmark column, and the benchmark column is **81.3%** (n=1,117). It was misread that way within a day of being frozen — by the next session, reading it as a contradiction of the committed run. §9's own rule (*a percentage quoted without its n is not yet a result*) applies to the document that states it.
   - Also fixed: `~50 MB` → **85 MB** for `outputs/eval_split/`, and five stale **1,120**s (the planned count) → **1,117** (the measured one) across `results/README.md`, `src/eval.py` and `scripts/build_eval_split.py`. Aadi's learning-log entries keep 1,120 deliberately — they are the historical record of what he predicted at the time.
 
+- **2026-08-12 — Week 3 half built, and stopped by a finding nobody predicted. `src/train.py`, `scripts/build_train_pool.py`, `requirements-kaggle.txt` and `notebooks/kaggle_qlora_train.ipynb` written; `src/eval.py` and `scripts/build_eval_split.py` gained `--split night|day`. No training step has run.**
+  - **The leak check fired on its first run and killed the plan it was part of.** It was written expecting to print `0` and printed **235**: of 241 images in `day-train` shards 0–3, 235 also sit in the frozen day eval split, **byte-identical by sha256**, with only 6 images (10 rows) outside it — while **0 of 560 `(image, question, answer)` triples** are shared. `day-train` and `day-validation` are two sets of *questions about the same ~276 keyframes*. **The answers never leaked; the pixels almost entirely did.** Eval moved to `night-validation` (D11, `eval-protocol.md` Amendment 1); day∩night = 0 images, measured both ways.
+  - **The check earned its keep by being a hard failure rather than a warning.** Had it printed a warning above a successful build, it would have been scrolled past, and every W3/W4 row would have trained on its own eval images — **with an accuracy number that looked completely normal.** The failures worth instrumenting are the ones that do not announce themselves.
+  - **One wrong word hid it for a week: `token` is a KEYFRAME id, not a scene id.** "270 distinct scenes" reads as 270 independent situations; it is 270 frames, and a nuScenes drive contributes many near-identical frames ~0.5 s apart. Under that mislabel, "train vs validation" sounded like a split over situations. §9's ICC = 0.000 was measured over the wrong grouping and does not transfer to night (5.73 questions/image over just 115 images; measured ICC there is **0.024**, deff 1.11, n_eff 593 — small, but no longer zero).
+  - 🚨 **The bigger finding: the benchmark's baseline was a straw man, and it flattered every number.** Night zero-shot is **31.9%** against a 24.9% global majority (+7.0 pp). But the **per-question-type prior** — answer `yes` to yes/no questions and `car` to everything else, which needs no image, no training and no understanding, since question type is readable off the question text — scores **31.9%** on night and **33.4%** on day. So the real deltas are **+0.0 pp (night)** and **+1.7 pp (day)**, not +7.0 and +8.8. On night *binary* questions the model scores **51.2%** against a 54.1% trivial constant — **worse than the straw man.** `src/eval.py` now reports `prior_baseline` and `delta_over_prior_pp` on every run. **A baseline that no real system would adopt is not a baseline.**
+  - **This does not yet condemn the dataset, and saying so precisely matters.** Zero-shot is a lower bound: format compliance is 80.6% and the model has never seen the task. The decisive experiment is a local ~60 min QLoRA run — free, no Kaggle quota, since Milestone F showed training fits at 3.53 GiB — scored against **31.9%**, not 24.9%. Aadi's call; it is the first thing the next session does.
+  - **Measured while building, worth keeping:** sequences are only **~96 tokens** (≈49 vision + ~40 text), not the ~247 vision tokens §3 quotes — `max_pixels` caps 224×224 inputs well below the model's ceiling. Directly relevant to the still-sealed T4 batch-size prediction. Pool decode rate is **74 images/min**, so the 1,817-row pool is ~25 min of CPU.
+  - `src/stability.py` took its only change since Milestone F: `build_trainable` gained `lora_alpha` / `lora_dropout` kwargs whose **defaults reproduce F exactly**. Shared rather than copied, because that function holds the §10 hard-fail on zero trainable vision params, and the copy that drifts is the one that goes blind.
+  - **Training pool built and clean:** 1,817 rows over 276 images (6.58 questions/image), **0 shared images with the night eval split**, 25.9% majority (`yes`) vs night's 24.9% — close enough that the adapter is not learning a prior mismatched to what it is scored against. `results/train_pool_manifest.jsonl` tracked at 575 KB; 138 MB of PNG in gitignored `outputs/train_pool/`.
+
 ---
 
 ## 9. Milestone E — frozen eval protocol & benchmark row 1 *(2026-08-11)*
 
 Protocol: [`docs/eval-protocol.md`](./eval-protocol.md). Harness: `src/eval.py`. Raw record: `results/eval_zeroshot.json`.
+
+> ⚠️ **RETIRED AS THE BENCHMARK SPLIT, 2026-08-12 (D11).** Everything in this section is a correct measurement **of the day split**, and row 1 is still valid — it is zero-shot, so the leak D11 describes cannot touch it. But the day split is no longer where rows are scored, and a night row must never be compared to these numbers.
+>
+> **Two words in this section are wrong throughout: "scene" means *keyframe*.** The 270 "distinct scenes" are 270 *frames*, and a nuScenes drive contributes many near-identical frames roughly half a second apart. That mislabel is what allowed `day-train` vs `day-validation` to read as a split over independent situations when it is a split over questions about the same pictures. **The ICC = 0.000 below was therefore measured over the wrong grouping**, and it says nothing about the night split, which is 5.73 questions/image over only 115 images.
 
 ### The frozen split
 

@@ -1,10 +1,13 @@
-"""Build and freeze the Milestone E eval split.
+"""Build and freeze an eval split.
 
-Produces two committed artifacts and one gitignored cache:
+Produces two committed artifacts and one gitignored cache per split:
 
-  results/eval_split_manifest.jsonl  TRACKED  - the frozen split itself
-  results/answer_vocab.json          TRACKED  - the closed answer vocabulary
-  outputs/eval_split/                IGNORED  - the PNG pixels (regenerable)
+  results/eval_split_night_manifest.jsonl  TRACKED  - the CURRENT benchmark split
+  results/eval_split_manifest.jsonl        TRACKED  - the retired Milestone E split
+  results/answer_vocab.json                TRACKED  - the closed answer vocabulary,
+                                                      from day-train, shared by both
+  outputs/eval_split_night/ , outputs/eval_split/
+                                           IGNORED  - the PNG pixels (regenerable)
 
 Why the pixels live outside git and the manifest inside it: the split's *identity*
 is what must be frozen and reviewable, not 50 MB of binary. Each manifest row
@@ -35,8 +38,9 @@ byte-for-byte against the committed record.
    gate. A "harmless" change to this line would break that check.
 
 Usage:
-    python scripts/build_eval_split.py            # build everything
-    python scripts/build_eval_split.py --verify   # re-check sha256s, write nothing
+    python scripts/build_eval_split.py                    # build the night benchmark split
+    python scripts/build_eval_split.py --split day        # rebuild the retired day split
+    python scripts/build_eval_split.py --verify           # re-check sha256s, write nothing
 """
 
 from __future__ import annotations
@@ -61,17 +65,45 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 REPO_ID = "KevinNotSmile/nuscenes-qa-mini"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# The frozen eval split. day-validation, shards 0-7 inclusive -> 8 x 140 = 1,120 rows.
-# Never trained on. Shards 8-15 are deliberately left out and unused: if the eval
-# split ever needs widening, expanding into untouched shards is honest, whereas
-# re-picking rows from a pool we have already scored is not.
-EVAL_SHARDS = [f"day-validation/data-{i:05d}-of-00016.arrow" for i in range(8)]
-
-# MEASURED, not assumed. Shards 0-4 hold 140 rows but shards 5-7 hold 139, so the
-# split is 1,117 rows and not the 8 x 140 = 1,120 this was planned as. Recorded here
-# because every confidence interval in docs/eval-protocol.md is derived from it.
-EXPECTED_ROWS = 1117
+# TWO SPLITS. The benchmark split moved day -> night on 2026-08-12; see src/eval.py's
+# SPLITS block for the full reason. Short version, all measured:
+#
+#   day-train and day-validation are NOT disjoint sets of images. They are two sets
+#   of QUESTIONS about the same ~276 keyframes. Of the 241 images in day-train shards
+#   0-3, 235 also appear in the day eval split, and all 235 are byte-identical by
+#   sha256. Only 6 images (10 rows) of day-train are outside it. So an adapter trained
+#   on day would be scored on pixels it had trained on, and the accuracy number would
+#   look completely normal.
+#
+#   Night is a different set of drives, so day-train vs night-validation is disjoint
+#   BY CONSTRUCTION rather than by the dataset's own train/validation labels -- which
+#   this exercise showed cannot be trusted to mean what they say.
+#
+# The day split is kept, not deleted: it produced benchmark row 1 (zero-shot, so the
+# leak does not affect it) and it is the only split the shard-0 regression gate runs
+# against.
+SPLIT_DEFS = {
+    "night": {
+        "shards": [f"night-validation/data-{i:05d}-of-00005.arrow" for i in range(5)],
+        # Measured on first build; night-train (5 more shards) is the untouched
+        # reserve, exactly as day-validation shards 8-15 were for the day split.
+        "expected_rows": None,
+        "img_dir": REPO_ROOT / "outputs" / "eval_split_night",
+        "manifest": REPO_ROOT / "results" / "eval_split_night_manifest.jsonl",
+    },
+    "day": {
+        "shards": [f"day-validation/data-{i:05d}-of-00016.arrow" for i in range(8)],
+        # MEASURED, not assumed. Shards 0-4 hold 140 rows but 5-7 hold 139, so the
+        # split is 1,117 and not the planned 8 x 140 = 1,120. Every confidence
+        # interval quoted for row 1 derives from this count.
+        "expected_rows": 1117,
+        "img_dir": REPO_ROOT / "outputs" / "eval_split",
+        "manifest": REPO_ROOT / "results" / "eval_split_manifest.jsonl",
+    },
+}
+DEFAULT_SPLIT = "night"
 
 # The answer vocabulary comes from day-TRAIN, never from the eval split. See
 # docs/eval-protocol.md: a vocabulary derived from the eval answers makes format
@@ -81,9 +113,6 @@ VOCAB_SHARD_TMPL = "day-train/data-{:05d}-of-00016.arrow"
 VOCAB_MAX_SHARDS = 6          # hard cap on the download
 VOCAB_SATURATION_STREAK = 2   # stop after N consecutive shards add no new class
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-IMG_DIR = REPO_ROOT / "outputs" / "eval_split"
-MANIFEST = REPO_ROOT / "results" / "eval_split_manifest.jsonl"
 VOCAB_PATH = REPO_ROOT / "results" / "answer_vocab.json"
 
 MB = 1024**2
@@ -185,13 +214,15 @@ def build_vocab() -> dict:
     }
 
 
-def build_split(verify_only: bool) -> list[dict]:
-    line("eval split (day-validation shards 0-7)")
-    IMG_DIR.mkdir(parents=True, exist_ok=True)
+def build_split(split: str, verify_only: bool) -> list[dict]:
+    spec = SPLIT_DEFS[split]
+    img_dir, manifest = spec["img_dir"], spec["manifest"]
+    line(f"eval split — {split} ({len(spec['shards'])} shards)")
+    img_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict] = []
     mismatches = 0
 
-    for shard in EVAL_SHARDS:
+    for shard in spec["shards"]:
         ds = read_shard(fetch(shard))
         # Parse the shard number off the filename, not by splitting on "-" -- the
         # split name itself contains one ("day-validation").
@@ -207,7 +238,7 @@ def build_split(verify_only: bool) -> list[dict]:
 
         for i in range(len(ds)):
             name = f"{shard_idx:02d}_{i:04d}.png"
-            path = IMG_DIR / name
+            path = img_dir / name
 
             if not verify_only and not path.exists():
                 # IDENTICAL to zeroshot_probe.py -- the regression gate depends on it.
@@ -229,7 +260,7 @@ def build_split(verify_only: bool) -> list[dict]:
         print(f"    {shard}  ->  {len(ds)} rows ({decoded} newly encoded)")
 
     if verify_only:
-        old = [json.loads(x) for x in MANIFEST.read_text().splitlines() if x.strip()]
+        old = [json.loads(x) for x in manifest.read_text().splitlines() if x.strip()]
         by_name = {r["image"]: r for r in old}
         for r in rows:
             prev = by_name.get(r["image"])
@@ -244,10 +275,20 @@ def build_split(verify_only: bool) -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--split", choices=sorted(SPLIT_DEFS), default=DEFAULT_SPLIT,
+                    help="'night' is the benchmark split; 'day' is the retired "
+                         "Milestone E split, rebuildable for the regression gate")
     ap.add_argument("--verify", action="store_true", help="re-check sha256s, write nothing")
+    ap.add_argument("--rebuild-vocab", action="store_true",
+                    help="re-derive results/answer_vocab.json from day-train. The "
+                         "vocabulary is FROZEN and shared by every split, so this is "
+                         "off by default -- rebuilding it silently would change what "
+                         "'format compliance' means across already-committed rows.")
     args = ap.parse_args()
 
-    rows = build_split(args.verify)
+    spec = SPLIT_DEFS[args.split]
+    img_dir, manifest = spec["img_dir"], spec["manifest"]
+    rows = build_split(args.split, args.verify)
 
     line("summary")
     tokens = {r["token"] for r in rows}
@@ -256,36 +297,50 @@ def main() -> int:
     binary = sum(v for k, v in answers.items() if k in ("yes", "no"))
 
     print(f"  rows                  = {len(rows)}")
-    print(f"  distinct scenes       = {len(tokens)}  ({len(rows)/len(tokens):.2f} questions/scene)")
+    # These are KEYFRAMES, not scenes. Calling them scenes (as this script and
+    # memory.md §9 originally did) is what hid the day-split leak for a week: a
+    # nuScenes drive contributes many near-identical frames ~0.5 s apart, so
+    # "distinct scenes = 270" sounded like 270 independent situations when it meant
+    # 270 frames from far fewer drives.
+    print(f"  distinct images       = {len(tokens)}  ({len(rows)/len(tokens):.2f} questions/image)")
     print(f"  distinct answers      = {len(answers)}")
     print(f"  majority baseline     = {100*majority_n/len(rows):.1f}%  (always {majority_answer!r})")
     print(f"  binary (yes/no) share = {100*binary/len(rows):.1f}%")
 
-    if len(rows) != EXPECTED_ROWS:
+    expected = spec["expected_rows"]
+    if expected is not None and len(rows) != expected:
         # Not fatal, but every CI figure is derived from this count. Say so loudly.
-        print(f"  WARNING: expected {EXPECTED_ROWS} rows, got {len(rows)}"
+        print(f"  WARNING: expected {expected} rows, got {len(rows)}"
               " -- update docs/eval-protocol.md")
 
     if args.verify:
         print("\nVERIFY OK — cached pixels match the committed manifest")
         return 0
 
-    MANIFEST.parent.mkdir(parents=True, exist_ok=True)
-    with MANIFEST.open("w", encoding="utf-8") as fh:
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    with manifest.open("w", encoding="utf-8") as fh:
         for r in rows:
             fh.write(json.dumps(r) + "\n")
-    print(f"\nwrote {MANIFEST}  ({MANIFEST.stat().st_size / 1024:.0f} KB)")
+    print(f"\nwrote {manifest}  ({manifest.stat().st_size / 1024:.0f} KB)")
 
-    vocab = build_vocab()
-    VOCAB_PATH.write_text(json.dumps(vocab, indent=2), encoding="utf-8")
-    print(f"wrote {VOCAB_PATH}")
+    if args.rebuild_vocab or not VOCAB_PATH.exists():
+        vocab = build_vocab()
+        VOCAB_PATH.write_text(json.dumps(vocab, indent=2), encoding="utf-8")
+        print(f"wrote {VOCAB_PATH}")
+    else:
+        vocab = json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
+        print(f"vocabulary: reusing the frozen {VOCAB_PATH.name} "
+              f"({vocab['n_classes']} classes from day-train) — pass --rebuild-vocab to re-derive")
 
     # How many eval answers are absent from the train-derived vocabulary? If this is
     # not ~0, exact-match scoring against a closed set is on shakier ground than
-    # docs/memory.md §6 assumes, and the protocol needs to say so.
+    # docs/memory.md §6 assumes, and the protocol needs to say so. Measured 0 for
+    # night on 2026-08-12 -- the day-train vocabulary covers night completely, which
+    # is what makes the day->night move cost nothing in scoring machinery.
     unseen = {a for a in answers} - set(vocab["classes"])
     print(f"\n  eval answers not present in the train vocabulary: {len(unseen)}  {sorted(unseen)[:10]}")
-    print(f"  images cached in {IMG_DIR} ({sum(f.stat().st_size for f in IMG_DIR.glob('*.png')) / MB:.0f} MB)")
+    print(f"  images cached in {img_dir} "
+          f"({sum(f.stat().st_size for f in img_dir.glob('*.png')) / MB:.0f} MB)")
     return 0
 
 

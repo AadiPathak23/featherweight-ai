@@ -321,7 +321,18 @@ class Tripwire:
 # Model
 # --------------------------------------------------------------------------- #
 
-def build_trainable(lora_r: int, fp32_vision: bool, grad_checkpointing: bool):
+def build_trainable(lora_r: int, fp32_vision: bool, grad_checkpointing: bool,
+                    lora_alpha: int | None = None, lora_dropout: float = 0.0):
+    """Build the 4-bit base + LoRA adapter this project trains.
+
+    lora_alpha / lora_dropout were added in Week 3 for src/train.py, which needs
+    them configurable. The DEFAULTS REPRODUCE MILESTONE F EXACTLY (alpha = 2r,
+    dropout = 0), so results/stability_*.json remain the record of what this code
+    does -- an additive signature change, not a behavioural one. Week 3 shares this
+    function rather than copying it because it contains the trap in §10: the
+    hard-fail on zero trainable vision params. A second copy would eventually
+    drift, and the copy that drifts is the one that goes blind.
+    """
     import torch
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
@@ -348,7 +359,8 @@ def build_trainable(lora_r: int, fp32_vision: bool, grad_checkpointing: bool):
         print(f"  --fp32-vision: upcast {n} vision-tower tensors to fp32")
 
     model = get_peft_model(model, LoraConfig(
-        r=lora_r, lora_alpha=2 * lora_r, lora_dropout=0.0, bias="none",
+        r=lora_r, lora_alpha=lora_alpha if lora_alpha is not None else 2 * lora_r,
+        lora_dropout=lora_dropout, bias="none",
         target_modules=VISION_TARGETS + LANG_TARGETS,
         task_type="CAUSAL_LM",
     ))

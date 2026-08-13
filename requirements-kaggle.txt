@@ -1,0 +1,53 @@
+# Kaggle (Linux / Python 3.12.13 / T4 x2) requirements — where all real training runs.
+#
+# This file is NOT requirements-local.txt with a different name, and the two must
+# not be merged. Measured 2026-08-07 on a live Kaggle T4:
+#
+#     Kaggle : torch 2.10.0+cu128, CUDA 12.8, Python 3.12.13, Linux
+#     Local  : torch 2.13.0+cu130, CUDA 13.0, Python 3.13.0,  Windows
+#
+# ---------------------------------------------------------------------------
+# torch IS DELIBERATELY ABSENT, and this is the most important line in the file.
+# ---------------------------------------------------------------------------
+# Kaggle ships torch preinstalled and matched to the image's CUDA 12.8 driver
+# stack. Listing torch here would let pip "helpfully" resolve a different build:
+# a ~2.5 GB download inside a 12 hr session, and a real chance of landing a wheel
+# whose CUDA does not match the driver — which fails at the first .cuda() call,
+# an hour after the install looked fine. Use what the image gives you and PRINT
+# what you got (the notebook does), rather than pinning a version you cannot test
+# from a Windows laptop.
+#
+# Same reasoning for torchvision: it is version-locked to torch.
+
+# The pin that is a decision, not staleness. Every Cosmos / Qwen3-VL example
+# targets 4.5x; 5.x is a breaking major release. docs/plan.md §7.
+transformers>=4.57,<5
+
+# Coupled to the line above: transformers 4.57.x requires huggingface-hub<1.0,
+# and an unpinned huggingface_hub resolves to 1.x and sends pip backtracking
+# through every 1.x release. These two move together — change one, check the other.
+huggingface_hub>=0.34,<1.0
+
+# Not in the Kaggle base image (verified 2026-08-07, Milestone C): `pip install
+# bitsandbytes` was needed before check_env.py would run. sm_75 is supported.
+bitsandbytes
+peft
+accelerate
+datasets
+qwen-vl-utils
+pillow
+
+# Download accelerator for Xet-backed repos. Optional, but the nuscenes-qa-mini
+# shards are ~460 MB each and a Kaggle session is on the clock.
+hf_xet
+
+# NOT INCLUDED, on purpose:
+#   torch / torchvision  — see above.
+#   trl                  — src/train.py is a plain PyTorch loop. It has to be,
+#                          because the fp16 tripwire (src/stability.py) needs to
+#                          read the GradScaler scale and per-module gradient norms
+#                          between backward() and step(). A Trainer owns that
+#                          interval, and memory.md §10 measured that the failure
+#                          worth catching is invisible from outside it.
+#   scipy                — src/eval.py computes Wilson intervals and McNemar in
+#                          closed form specifically to avoid this dependency.

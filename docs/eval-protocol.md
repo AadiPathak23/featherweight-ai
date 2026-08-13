@@ -15,6 +15,95 @@ Companions: [`memory.md`](./memory.md) (measured facts — authoritative), [`pla
 
 ---
 
+## 🚨 AMENDMENT 1 — the eval split moved `day` → `night` *(2026-08-12, decision D11)*
+
+**This is the first change to a frozen rule, and it is a change, not a correction.** Read
+this before anything below it; where the two disagree, this section wins.
+
+### What was found
+
+Week 3's training-pool builder ran a train/eval image-overlap check that was written
+expecting to print `0`. It printed **235**.
+
+| Measured 2026-08-12 | |
+|---|---|
+| Images in `day-train` shards 0–3 | 241 |
+| …that also appear in the day eval split | **235** |
+| …whose PNG bytes are **identical** (sha256) | **235 of 235** |
+| `day-train` images *outside* the day eval split | **6 images, 10 rows** |
+| Shared `(image, question, answer)` triples | **0 of 560** |
+| Union of images across 13 day shards (1,817 rows) | **276** |
+
+**`day-train` and `day-validation` are not two sets of images. They are two sets of
+questions about the same ~276 keyframes.** The answers do not leak; the pixels leak
+almost completely. Any adapter trained on `day-train` would have been scored on images
+it had trained on, and §6's accuracy number would have looked entirely normal.
+
+### What changed
+
+| | Before | After |
+|---|---|---|
+| **Eval split** | `day-validation` shards 0–7, 1,117 rows | **`night-validation` shards 0–4, 659 rows over 115 images** |
+| **Training domain** | `day-train` | **all of `day`** — both its splits, since the distinction carries no information |
+| **Manifest** | `results/eval_split_manifest.jsonl` | **`results/eval_split_night_manifest.jsonl`** |
+| **Pixels** | `outputs/eval_split/` | **`outputs/eval_split_night/`** |
+| **Answer vocabulary** | 29 classes from `day-train` | **unchanged** — see below |
+| **Everything in §2, §3, §6, §7, §8** | | **unchanged** |
+
+Night is disjoint from day **by measurement**: `day ∩ night-validation = 0` images and
+`day ∩ night-train = 0` images, over the 276 day images and 115 night images checked.
+Day and night are different drives, so this is structural rather than incidental — but
+it was measured, because this dataset's own split labels have already been shown not to
+mean what they say.
+
+### What survives, and what does not
+
+- **Benchmark row 1 (35.1% strict on day) stands.** It is zero-shot: nothing was
+  trained, so nothing leaked. It remains a valid measurement **of the day split** and is
+  simply **not comparable** to a night row. `results/eval_zeroshot.json` is kept.
+- **The shard-0 regression gate stands**, unchanged, on the day split.
+  `src/eval.py --shard0-only` forces `--split day` for exactly this reason.
+- **The answer vocabulary needed no change.** It is derived from `day-train`, and
+  `night-validation` contains **0 answers outside it** (0 classes, 0 rows). This is why
+  the move cost nothing in scoring machinery — §5's insistence that the vocabulary be
+  external to the eval split is what made the eval split replaceable.
+- **No finetuned row is invalidated, because none existed yet.** The check fired before
+  the first training step, which is the only reason this is an amendment and not a
+  retraction.
+
+### Three consequences that must not be lost
+
+1. **`token` is a KEYFRAME id, not a scene id.** §4 below calls these "scenes" throughout
+   and reports "270 distinct scenes, 4.14 questions/scene". They are 270 *frames*. A
+   nuScenes drive contributes many near-identical frames roughly half a second apart, so
+   the real number of independent situations is far smaller. **This mislabel is what hid
+   the leak**: "270 distinct scenes" sounds like 270 independent situations, and
+   "day-train vs day-validation" sounds like a split over them.
+2. **§4's ICC = 0.000 was measured under that mislabel, on the retired split.** It says
+   nothing about night. Night is **5.73 questions per image over only 115 images** — far
+   more clustered than day's 4.14 over 270. The clustered interval must be re-measured,
+   and this time it may not be free.
+3. **Near-duplicate frames remain, and this is a disclosed limitation.** Splitting
+   day/night removes image overlap entirely. It does **not** make the eval split 115
+   independent situations — consecutive keyframes from one night drive are nearly the
+   same picture. The design effect in §4 is the instrument that quantifies it; quote the
+   clustered interval.
+
+### Alternative rejected
+
+Re-partitioning the day domain by image (or by recovered drive) was the other candidate.
+It would have kept the in-domain claim, but it required re-freezing the split *and*
+re-measuring row 1 anyway, and it could not remove the near-duplicate-frame problem
+either. Night is disjoint by construction and cost one download. The price is that the
+benchmark is now a **day → night domain-shift** evaluation, which must be stated as the
+claim it is — not quietly reported as in-domain accuracy.
+
+⚠️ **Pre-registered before the night zero-shot was run** (Milestone D's discipline): if
+zero-shot strict beats the night majority baseline by ≥10 pp the split is committed;
+3–10 pp is marginal; <3 pp is a floor effect and night cannot rank methods.
+
+---
+
 ## 1. The protocol
 
 | Item | Frozen value |
@@ -28,9 +117,9 @@ Companions: [`memory.md`](./memory.md) (measured facts — authoritative), [`pla
 | **Extraction rule** | `normalize()` — see §3 |
 | **Primary metric** | strict exact-match on the normalized answer |
 | **Always reported with it** | lenient, format compliance (in-vocab %), majority-class baseline, and binary vs open-ended **disaggregated** |
-| **Eval split** | `day-validation` shards 0–7, all **1,117** rows, frozen by manifest (§4) |
-| **Answer vocabulary** | derived from `day-train`, frozen in `results/answer_vocab.json` (§5) |
-| **Robustness set** | `night-validation` — **held out. Never used for ranking.** Reported separately in W4, if at all |
+| **Eval split** | ⚠️ **AMENDED 2026-08-12 — `night-validation` shards 0–4, all 659 rows** (was `day-validation` shards 0–7, 1,117 rows). See Amendment 1 |
+| **Answer vocabulary** | derived from `day-train`, frozen in `results/answer_vocab.json` (§5) — **unchanged by the amendment**; night has 0 out-of-vocabulary answers |
+| **Training domain** | ⚠️ **AMENDED 2026-08-12 — all of `day`**, both of its splits. They share their images, so the dataset's train/validation labels carry no information |
 
 ### Why `min_pixels` is set low
 
@@ -89,6 +178,15 @@ apart.
 ---
 
 ## 4. The eval split
+
+> ⚠️ **SUPERSEDED BY AMENDMENT 1 (2026-08-12).** This section describes the **retired day
+> split**. It is kept in full because it is still the definition of the split that
+> produced benchmark row 1 and still governs the `--shard0-only` regression gate — and
+> because the word "scene" throughout it means **keyframe**, which is the mislabel that
+> hid the leak. The current benchmark split is `night-validation` shards 0–4: 659 rows,
+> 115 images, 5.73 questions/image, majority baseline 24.9% (`yes`), 46.0% binary,
+> frozen by `results/eval_split_night_manifest.jsonl`, pixels in
+> `outputs/eval_split_night/` (19 MB PNG).
 
 `day-validation` shards 0–7 → **1,117 rows**, frozen by `results/eval_split_manifest.jsonl`
 (one line per row: image filename, source shard, row index, `token`, question, answer,
@@ -183,8 +281,18 @@ computed from is not yet evidence. The machinery stays regardless — adapters m
 scene correlation the base model does not (`plan.md` open question #10), and that is a
 question this file is now instrumented to answer rather than guess at.
 
-**Never evaluate on anything touched during training.** `day-train` is for training,
-`day-validation` shards 0–7 for scoring, `night-validation` for robustness only.
+**Never evaluate on anything touched during training.** ⚠️ **Amended 2026-08-12:** the
+rule is unchanged but the assignment is inverted — **all of `day` is for training,
+`night-validation` is for scoring, `night-train` is the reserve.** The old assignment
+violated this rule while appearing to satisfy it, because it trusted the dataset's split
+names instead of checking the images.
+
+⚠️ **`night-train` is a weak reserve, and that is measured, not assumed.** It shares
+**113 of its 116 images** with `night-validation`. Expanding the eval split into it would
+add 659 more *questions* about the same pictures — tightening the interval on
+question-level accuracy while adding almost no new visual situations. Day-validation
+shards 8–15 are the honest place to widen the *training* pool; there is no clean way to
+widen the *eval* pool inside this dataset.
 
 ---
 
@@ -269,6 +377,37 @@ effects visible and separable (`memory.md` §6, open question #8).
 
 **Always store the baseline next to the metric.** 35.7% means nothing until you know that
 always answering `yes` scores 22.9%.
+
+### 🚨 AMENDMENT 2 (2026-08-12) — the majority-class baseline is too weak. Quote the per-type prior.
+
+`majority_baseline` answers `yes` to **every** row, including *"what colour is the truck"*.
+No real system behaves that way, so it is a straw man — and the gap to it was being read as
+evidence of perception.
+
+The honest reference is the **per-question-type prior**: answer the most common answer *of
+each question type*. Question type is readable straight off the question text (*"are there
+any…"* vs *"what / how many…"*), so this strategy needs **no image, no training and no
+understanding**.
+
+| Zero-shot, 4-bit NF4 | day (n=1,117) | night (n=659) |
+|---|---|---|
+| strict | 35.1% | 31.9% |
+| majority baseline | 26.3% | 24.9% |
+| delta over it | +8.8 pp | +7.0 pp |
+| **per-type prior** | **33.4%** | **31.9%** |
+| **delta over the prior** | **+1.7 pp** | **+0.0 pp** |
+
+On night the model scores **210/659 — exactly what the prior scores**. On night *binary*
+questions it scores **51.2%** against a **54.1%** constant: worse than the straw man.
+
+**New required metrics**, computed by `src/eval.py` on every run and stored per row:
+`prior_baseline`, `prior_baseline_parts`, `delta_over_prior_pp`, `binary_best_constant`,
+`open_ended_best_constant`. **`delta_over_prior_pp` is the number to quote.**
+
+⚠️ No past run is invalidated — this adds a baseline, it does not change scoring. But
+`memory.md` §9's *"+8.8 pp over baseline"* overstates demonstrated perception by roughly
+7 pp, and any write-up must use the prior instead. **A baseline no real system would adopt
+is not a baseline.**
 
 ---
 

@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
 > Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
-> Last updated: 2026-08-11 · **Weeks 1 and 2 COMPLETE.** D ✅ dataset · E ✅ eval protocol frozen, benchmark row 1 = 35.1% · F ✅ fp16 tripwire, both criteria met. **Next: Week 3, first end-to-end QLoRA run on Kaggle.**
+> Last updated: 2026-08-12 · **Weeks 1 and 2 COMPLETE.** D ✅ dataset · E ✅ eval protocol frozen, benchmark row 1 = 35.1% · F ✅ fp16 tripwire, both criteria met. **Week 3 in progress:** the training loop and Kaggle bridge are built, and the train/eval leak check found that the dataset's own split shares its images — **the eval split moved day → night (D11)** before a single training step ran.
 
 ---
 
@@ -272,7 +272,11 @@ A written shortlist with verified size/license/access per candidate, one recomme
 
 ### Weeks 3+ *(outline)*
 
-- **W3** — first end-to-end QLoRA run on Kaggle; checkpoint/resume across the 12 hr cap; eval harness green. **Import the tripwire from `src/stability.py`** — §5-F shows its failure mode is invisible to a loss check. `requirements-kaggle.txt` still does not exist and is the one untested piece (torch 2.10.0+cu128 / py3.12.13 vs local 2.13.0+cu130).
+- **W3** — first end-to-end QLoRA run on Kaggle. Built 2026-08-12: `src/train.py` (wall-clock budget, padded batching + grad accum, `--probe-batch`, the Milestone F tripwire imported unchanged), `scripts/build_train_pool.py`, `requirements-kaggle.txt`, `notebooks/kaggle_qlora_train.ipynb`.
+  - 🚨 **The dataset's own train/validation split leaks images — found by the leak check on its first run, before any training step.** `day-train` and `day-validation` are two sets of *questions* about the same ~276 keyframes (235/241 shared, byte-identical). **Eval moved to `night-validation`** (659 rows, 115 images, day∩night = 0); the training pool is now the whole day domain. Decision **D11** in `memory.md`, **Amendment 1** in `eval-protocol.md`. Benchmark row 1 survives — it is zero-shot.
+  - **Budget = wall-clock, not steps** (§6). DoRA costs more per step, so step-matching would hand the slower method more compute. Consequence baked into `src/train.py`: a wall-clock budget has no known horizon, so the LR schedule is warmup → constant and `--cosine` requires `--max-steps`.
+  - **Checkpointing = periodic adapter save only.** The 12 hr cap is not binding at a ~60 min budget; full optimizer/scaler/cursor resume is untested code on a path that fires only when a session dies. Build it when a run actually needs it.
+  - ⚠️ **`requirements-kaggle.txt` remains the one untested piece** (Kaggle torch 2.10.0+cu128 / py3.12.13 vs local 2.13.0+cu130). It deliberately omits torch; the notebook prints every resolved version instead.
 - **W4** — DoRA + LoRA runs under matched VRAM/wall-clock budgets; seed variance; ViT-quantization ablation
 - **W5** — latency/VRAM measurement on the 3060 as the *edge target*; adapter merge + 4-bit inference profiling
 - **W6+** — write-up, release adapters, repo polish; hooks for Project #2 (multi-LoRA serving)
@@ -291,6 +295,8 @@ A written shortlist with verified size/license/access per candidate, one recomme
 | Full finetuning | Cosmos-Reason2-2B | — | **estimated only — not run (D2)** |
 
 Measured per row: **accuracy** · **peak VRAM** · **wall-clock** · **inference latency / tokens-per-sec** · **adapter size on disk** · **training cost ($0, but GPU-hours)**.
+
+🚨 **Accuracy is quoted against the PER-QUESTION-TYPE PRIOR, not the majority class *(added 2026-08-12)*.** The majority-class baseline answers `yes` to *"what colour is the truck"* — no real system would, so it is a straw man that hands every row ~7 pp of free credit. Answering the most common answer **of each question type** needs no image, no training and no understanding, because question type is readable straight off the question text. Measured zero-shot: **31.9% vs a 31.9% prior on night (+0.0 pp)** and **35.1% vs 33.4% on day (+1.7 pp)** — against the +7.0 and +8.8 pp the majority baseline reports. `src/eval.py` computes `prior_baseline` and `delta_over_prior_pp` per run. **A benchmark row that only beats the majority class has demonstrated answer routing, not perception.**
 
 Budget matching: runs are compared at equal wall-clock *and* equal peak VRAM, not equal epochs. That's the whole point.
 
@@ -340,6 +346,8 @@ PyPI latest is **5.14.1**, a major release with breaking changes. Every Cosmos/Q
 3. ~~Is fp16-only training really forced?~~ — **Yes, settled on live hardware 2026-08-07.** T4 is sm_75 Turing; bf16 tensor cores arrived with Ampere (sm_80). Kaggle runs CUDA 12.8 and still lacks it, so it is silicon, not software. *Escalation if W3 proves unstable:* fp32 vision tower, tighter loss scaling, or a free Ada-class tier (L4 has bf16) as a **supplementary** runner — Kaggle stays primary.
 
 **Still open**
+11. **New (2026-08-12, from D11):** the benchmark is now **day → night domain shift**, and that is a different claim from in-domain accuracy. Does it separate the five methods at all? A domain shift can compress differences (every method fails on the same dark pixels) or amplify them (a better-adapted model generalizes further). Decide with W3/W4 data. If night proves too hard, the fallback is re-partitioning the day domain by image, with the near-duplicate-keyframe caveat disclosed.
+12. **New (2026-08-12):** night is 5.73 questions per image over **115 images** — far more clustered than day's 4.14 over 270. §9's ICC = 0.000 was measured on the retired split under a mislabel (`token` is a keyframe, not a scene) and does not transfer. `src/eval.py` measures it per run; if it is non-zero, the design-effect machinery Milestone E built and did not need becomes load-bearing, and McNemar needs a cluster bootstrap (§8 of `eval-protocol.md`).
 2. transformers 4.5x vs 5.x — on 4.57.6; upgrade is a separate, individually-verified task. Note `huggingface_hub` is pinned `<1.0` **because** of this, so the two move together.
 8. **From Milestone D, resized by E:** how much of the finetuning gain is **output-vocabulary alignment** rather than improved perception? At n=140 the format share of errors looked like 43%; at n=1,117 it is **28.8%** (209 of 725). Real, but **smaller than feared — 71.2% of errors are genuine misperception**, so most of the headroom is perception after all. Format compliance stays its own column; quantify the split once adapters exist.
 9. **From Milestone D, updated by E:** open-ended accuracy is **13.8%** (n=593), binary **59.2%** (n=524). If the five methods cannot be separated on open-ended questions, report binary and open-ended as separate columns. Decide with W3 data, not now.
