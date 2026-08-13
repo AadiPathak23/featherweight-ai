@@ -433,7 +433,24 @@ training pool became the whole day domain. Full record: `memory.md` D11.
      fall on either side of the line. `src/train.py --probe-batch` measures the
      curve, so your reasoning is checkable against two points, not one. -->
 
-**Prediction 3 — QLoRA after ~1 hour, day -> night:**
+**Prediction 3 — QLoRA after ~1 hour, day -> night.**
+
+> ⚠️ **Also overtaken, and for a deliberate reason.** You chose to run the decisive
+> experiment rather than pause for the prediction, which was the right call -- the
+> viability of the whole dataset was riding on it. **Prediction 2 (batch size on a
+> T4) is the one still genuinely sealed**, and `--probe-batch` has been left unrun
+> on purpose so it stays that way until you write it.
+>
+> The result, so the question below becomes "explain this" rather than "call this":
+> **47.2% strict, against a 31.9% no-perception prior -- +15.3 pp, McNemar
+> p = 6.5e-09.** Format compliance went 80.6% -> **100.0%**. Open-ended moved most
+> (15.4% -> 31.2%), binary 51.2% -> 66.0%.
+>
+> The question worth sitting with: the prior baseline is **already 100%
+> format-compliant by construction**. Say in your own words why that single fact is
+> what proves the +15.3 pp is perception and not vocabulary -- and what the number
+> would have looked like if we had still been quoting the majority baseline.
+
 
 <!-- This is now a DOMAIN-SHIFT result: trained on day, scored on night.
 

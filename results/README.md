@@ -48,7 +48,9 @@ Every run file carries the same top-level shape, so runs stay diffable:
 | `eval_zeroshot_night.json` | **Benchmark row 1 (night)** — zero-shot on the night split. The go/no-go for D11: pre-registered as ≥10 pp over the 24.9% majority baseline to commit. |
 | `train_pool_manifest.jsonl` | **The training pool** — the whole `day` domain (both of its splits, which share images and so carry no train/val distinction). Written only if the image-leak check against the night split passes. |
 | `train_batch_probe.json` | Peak VRAM vs physical batch size, measured until OOM. Two points separate the fixed cost (weights + fp32 upcast + optimizer state) from the part that scales (retained activations); one point cannot. |
-| `train_qlora.json` | The QLoRA training run: config, thinned per-step log, scaler skips, tripwire state, peak VRAM, s/step, steps achieved **against the wall-clock budget given**. |
+| `train_qlora.json` | **The QLoRA training run** (local, 3060): 60 min budget → **2,428 optimizer steps**, 1 epoch over 1,817 rows, loss 2.096 → 0.485, 7 scaler skips, scale settled at 1024, peak 3.60 GiB, tripwire silent. |
+| `train_tripwire_check.json` | **Proof that `src/train.py` consults the tripwire**, not just that the tripwire works. `--lr 5.0` halts at step 6 on 5 consecutive skips, naming `visual.patch_embed.proj.lora_A`. A clean run here is a failure. |
+| `eval_qlora_night.json` | **Benchmark row 2** — QLoRA, day-trained, scored on night. **47.2% strict** vs a **31.9% per-type prior** (+15.3 pp); format compliance **100%**; binary 66.0%, open-ended 31.2%. |
 | `stability_baseline.json` | **Milestone F** — a healthy fp16 LoRA run completes with no false alarm from the tripwire. |
 | `stability_sabotage.json` | **Milestone F success criterion** — an inflated LR diverges and the tripwire halts it with a named cause. A *clean* sabotage run is a failure. |
 

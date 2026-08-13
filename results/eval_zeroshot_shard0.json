@@ -1,13 +1,14 @@
 {
   "run": "eval_zeroshot",
-  "timestamp_utc": "2026-08-12T06:42:51+00:00",
-  "git_sha": "9ed088b-dirty",
+  "timestamp_utc": "2026-08-13T09:43:34+00:00",
+  "git_sha": "4c330ec-dirty",
   "protocol": "docs/eval-protocol.md (frozen 2026-08-11)",
   "config": {
     "model": "nvidia/Cosmos-Reason2-2B",
     "adapter": null,
     "dataset": "KevinNotSmile/nuscenes-qa-mini",
-    "split": "day-validation shards 0-7 (frozen manifest)",
+    "split": "day",
+    "split_manifest": "results\\eval_split_manifest.jsonl",
     "full_split": false,
     "n": 140,
     "quantization": "4-bit nf4 + double quant, compute fp16",
@@ -35,15 +36,31 @@
     "majority_baseline": 22.857142857142858,
     "majority_answer": "yes",
     "delta_over_baseline_pp": 12.857142857142858,
+    "prior_baseline": 34.285714285714285,
+    "prior_baseline_parts": {
+      "binary": {
+        "best_constant": "yes",
+        "n": 61,
+        "acc": 52.459016393442624
+      },
+      "open_ended": {
+        "best_constant": "car",
+        "n": 79,
+        "acc": 20.253164556962027
+      }
+    },
+    "delta_over_prior_pp": 1.4285714285714306,
     "in_vocab_pct": 75.71428571428571,
     "binary_n": 61,
     "binary_acc": 67.21311475409836,
+    "binary_best_constant": 52.459016393442624,
     "open_ended_n": 79,
-    "open_ended_acc": 11.39240506329114
+    "open_ended_acc": 11.39240506329114,
+    "open_ended_best_constant": 20.253164556962027
   },
   "timings": {
-    "seconds_total": 64.76959990011528,
-    "seconds_per_example": 0.4626399992865377
+    "seconds_total": 33.26995800016448,
+    "seconds_per_example": 0.23764255714403199
   },
   "peak_vram_gib": 1.5005521774291992,
   "records": [

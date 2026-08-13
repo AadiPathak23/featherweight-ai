@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
 > Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
-> Last updated: 2026-08-12 · **Weeks 1 and 2 COMPLETE.** D ✅ dataset · E ✅ eval protocol frozen, benchmark row 1 = 35.1% · F ✅ fp16 tripwire, both criteria met. **Week 3 in progress:** the training loop and Kaggle bridge are built, and the train/eval leak check found that the dataset's own split shares its images — **the eval split moved day → night (D11)** before a single training step ran.
+> Last updated: 2026-08-13 · **Weeks 1 and 2 COMPLETE.** D ✅ dataset · E ✅ eval protocol frozen, benchmark row 1 = 35.1% · F ✅ fp16 tripwire, both criteria met. **Week 3: the loop is built and RUN locally.** The train/eval leak check found that the dataset's own split shares its images, so the eval split moved day → night (**D11**) before a single training step ran. QLoRA then scored **47.2% vs a 31.9% no-perception prior (+15.3 pp, p=6.5e-09)** — the dataset can rank methods, and the gain is perception, not vocabulary. **Next: the same run on a T4.**
 
 ---
 
@@ -290,7 +290,7 @@ A written shortlist with verified size/license/access per candidate, one recomme
 | Zero-shot | Cosmos-Reason2-2B | 4-bit NF4 | run |
 | Prompt-tuning / linear probe | Cosmos-Reason2-2B | frozen | run |
 | LoRA | Cosmos-Reason2-2B | fp16 | run |
-| **QLoRA** | Cosmos-Reason2-2B | 4-bit NF4 | run |
+| **QLoRA** | Cosmos-Reason2-2B | 4-bit NF4 | ✅ **run 2026-08-13 (local, 3060): 47.2% vs a 31.9% prior, +15.3 pp, p=6.5e-09.** Accuracy is a benchmark number; its wall-clock/VRAM columns are 3060 numbers and must be re-measured on a T4 |
 | **DoRA (4-bit)** | Cosmos-Reason2-2B | 4-bit NF4 | run |
 | Full finetuning | Cosmos-Reason2-2B | — | **estimated only — not run (D2)** |
 
@@ -349,7 +349,7 @@ PyPI latest is **5.14.1**, a major release with breaking changes. Every Cosmos/Q
 11. **New (2026-08-12, from D11):** the benchmark is now **day → night domain shift**, and that is a different claim from in-domain accuracy. Does it separate the five methods at all? A domain shift can compress differences (every method fails on the same dark pixels) or amplify them (a better-adapted model generalizes further). Decide with W3/W4 data. If night proves too hard, the fallback is re-partitioning the day domain by image, with the near-duplicate-keyframe caveat disclosed.
 12. **New (2026-08-12):** night is 5.73 questions per image over **115 images** — far more clustered than day's 4.14 over 270. §9's ICC = 0.000 was measured on the retired split under a mislabel (`token` is a keyframe, not a scene) and does not transfer. `src/eval.py` measures it per run; if it is non-zero, the design-effect machinery Milestone E built and did not need becomes load-bearing, and McNemar needs a cluster bootstrap (§8 of `eval-protocol.md`).
 2. transformers 4.5x vs 5.x — on 4.57.6; upgrade is a separate, individually-verified task. Note `huggingface_hub` is pinned `<1.0` **because** of this, so the two move together.
-8. **From Milestone D, resized by E:** how much of the finetuning gain is **output-vocabulary alignment** rather than improved perception? At n=140 the format share of errors looked like 43%; at n=1,117 it is **28.8%** (209 of 725). Real, but **smaller than feared — 71.2% of errors are genuine misperception**, so most of the headroom is perception after all. Format compliance stays its own column; quantify the split once adapters exist.
+8. ✅ **ANSWERED 2026-08-13.** The vocabulary gain is **real, fully captured, and worth 0 pp of the reported delta.** QLoRA took format compliance 80.6% → **100.0%**, so all the vocabulary headroom was consumed — but the per-question-type prior is already 100% format-compliant *by construction*, so a purely vocabulary-driven model would have landed **on** the prior. It finished **+15.3 pp above** it. Quoting the majority baseline instead would have reported +22.3 pp with no way to tell the two effects apart. *(Original question below.)* How much of the finetuning gain is **output-vocabulary alignment** rather than improved perception? At n=140 the format share of errors looked like 43%; at n=1,117 it is **28.8%** (209 of 725). Real, but **smaller than feared — 71.2% of errors are genuine misperception**, so most of the headroom is perception after all. Format compliance stays its own column; quantify the split once adapters exist.
 9. **From Milestone D, updated by E:** open-ended accuracy is **13.8%** (n=593), binary **59.2%** (n=524). If the five methods cannot be separated on open-ended questions, report binary and open-ended as separate columns. Decide with W3 data, not now.
 10. **New (from Milestone E):** scene clustering measured **ICC = 0.000** for the zero-shot model, so the naive CI is valid today. Do **adapters** induce scene-level correlation that the base model lacks? `src/eval.py` records `scene_icc` per run, so this answers itself in W4 — and if it turns non-zero, McNemar p-values need a cluster bootstrap.
 4. Vision-tower quantization policy — quantize the ViT or keep it fp16? Affects accuracy *and* the VRAM story. Decide with data in W4.

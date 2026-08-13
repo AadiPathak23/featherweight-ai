@@ -4,30 +4,36 @@
 >
 > 🧭 **How we work — read before doing anything.** Aadi is deliberately working above his current level and wants to *learn*, not receive finished code. Per milestone: **frame** briefly → **Aadi writes a prediction before anything runs** → **build in small pieces**, explaining each non-obvious decision where it appears → **reconcile** prediction vs reality, digging hardest where he was wrong → **Aadi logs it in his own words**. Label each thing **Tier 1** (learn deeply: LoRA/DoRA math, quantization, fp16 stability, experiment design), **Tier 2** (know the shape: HF/PEFT APIs), or **Tier 3** (plumbing: venv, git, Kaggle UI). No black boxes — every flag and magic number gets a reason. Say plainly what is measured fact vs. estimate vs. untested bet. Where he can reason it out, ask and wait. One milestone per session; depth over throughput.
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
-> Last updated: 2026-08-12 (session close — Week 3 half built; **D11: the eval split moved day → night after the leak check fired**, and the night zero-shot landed exactly on a no-perception baseline)
+> Last updated: 2026-08-13 (session close — Week 3 half built; **D11: the eval split moved day → night after the leak check fired**; the night zero-shot landed exactly on a no-perception baseline, and **QLoRA then beat it by +15.3 pp — the dataset is viable**)
 
 ---
 
 ## 1. START HERE — session resume
 
-### 🔖 Where we left off — end of session 2026-08-12 (morning)
+### 🔖 Where we left off — end of session 2026-08-13
 
-**Week 3 is half built, and it stopped for a reason nobody predicted: the dataset's own train/validation split shares its images. The eval split moved `day` → `night` (D11) before a single training step ran. Then the night zero-shot showed the model scoring *exactly* at a baseline that needs no perception at all.**
+**Week 3's loop is built, run and green — but only after a reason nobody predicted stopped it first: the dataset's own train/validation split shares its images. The eval split moved `day` → `night` (D11) before a single training step ran. Then the night zero-shot showed the model scoring *exactly* at a baseline that needs no perception at all.**
 
-#### ▶️ FIRST THING NEXT SESSION — the decisive experiment, already decided
+#### ✅ THE DECISIVE EXPERIMENT RAN, AND THE ANSWER IS YES *(2026-08-13)*
 
-**Run the full local QLoRA training and see whether finetuning beats the no-perception prior.** Aadi's call, made after seeing the night numbers. It costs **no Kaggle quota** (training fits locally at 3.53 GiB, Milestone F) and it answers the only question that now matters: *can any finetuning method extract real perception from 224×224 night images, or do all five methods converge on the answer prior and leave the benchmark unable to rank anything?*
+**QLoRA on night: 47.2% strict against a 31.9% no-perception prior — +15.3 pp, McNemar p = 6.5e-09.** The dataset can rank methods, and the gain is perception rather than wording: format compliance hit **100%**, and the prior baseline is already 100% format-compliant by construction, so the +15.3 pp is *net of* the vocabulary effect. Full record in **§11**.
 
-Run in this order — the first command is cheap and gates the rest:
+Open-ended moved most — **15.4% → 31.2%** (from +2.5 pp to +18.3 pp above its trivial constant) — which is the opposite of what Milestone D's "224x224 collapses open-ended" would have predicted.
+
+#### ▶️ NEXT SESSION — Kaggle, and the two sealed predictions
+
+Everything local is green. What is left is the T4:
 
 ```bash
-python -m src.train --max-steps 12 --lr 5.0 --warmup 1 --grad-accum 1   # tripwire MUST halt this
-python -m src.train --budget-minutes 60 --batch-size 1 --grad-accum 4 --lr 1e-4 --run-name qlora
-python -m src.eval --split night --adapter outputs/adapters/qlora --run-name eval_qlora_night
-python -m src.eval --shard0-only            # regression gate, must still reproduce 35.7 / 22.9
+# on Kaggle, via notebooks/kaggle_qlora_train.ipynb
+python -m src.train --probe-batch --probe-max 32       # prediction #2 lives or dies here
+python -m src.train --budget-minutes 60 --batch-size <from probe> --run-name qlora_t4
+python -m src.eval --split night --adapter outputs/adapters/qlora_t4 --run-name eval_qlora_t4
 ```
 
-**Success is `strict > 31.9%` by a real margin — NOT `strict > 24.9%`.** See the prior-baseline finding below; beating the global majority baseline proves nothing.
+- ⚠️ **`requirements-kaggle.txt` has still never run.** It is the one genuinely untested artifact and the first thing that can fail.
+- ⚠️ **The local row's wall-clock and VRAM columns are 3060 numbers.** W4's matched-budget comparison must be **all-T4** — this run's 2,428 steps are not what a T4 hour buys.
+- **W4 can start immediately after**: LoRA (fp16) and DoRA rows under the same 60 min budget, then McNemar between them. The whole comparison machinery is now proven end to end.
 
 #### 🚨 Finding 1 — the dataset's train/validation split leaks images (D11)
 
@@ -66,7 +72,7 @@ The global majority baseline answers `yes` to *"what colour is the truck"*. No r
 Neither has been measured, so both are still worth writing (prompts already in `learning-log.md`):
 
 - **#2, batch size on a 14.6 GiB T4** — `--probe-batch` was deliberately skipped, because it only informs the *Kaggle* batch size. Measured input: 3.53 GiB at batch 1 (1.47 GiB weights + 0.59 GiB fp32 upcast), sequences only **~96 tokens** (≈49 vision + ~40 text — much shorter than §3's 247, because `max_pixels` caps 224×224 inputs).
-- **#3, QLoRA day → night** — does the adapter beat **31.9%**, and is the gain format alignment (which the prior already has, so it earns nothing) or real perception?
+- ⚠️ **#3 (QLoRA day → night) was also overtaken** — Aadi chose to run the decisive experiment rather than pause for it, and the answer is 47.2% / +15.3 pp / perception. Recorded as overtaken in `learning-log.md`, same as #1. **#2 is the only prediction still genuinely sealed**, and `--probe-batch` has been deliberately left unrun to keep it that way.
 
 ⚠️ **#1 (night zero-shot) was overtaken** — it was the go/no-go and had to run. Recorded as such in `learning-log.md` rather than quietly dropped.
 
@@ -88,7 +94,7 @@ Neither has been measured, so both are still worth writing (prompts already in `
 
 **✅ The training pool is built and the leak check passes.** `results/train_pool_manifest.jsonl` (575 KB, tracked) — **1,817 rows over 276 images, 6.58 questions/image, SHARED IMAGES = 0**, 25.9% majority (`yes`), 47.4% binary. Pixels: `outputs/train_pool/`, 138 MB, gitignored and regenerable at a measured 74 images/min.
 
-**Not yet done, in priority order:** the tripwire check on `train.py` · the 60 min local QLoRA run · `eval --adapter` on night · the shard-0 regression gate re-run · `--probe-batch`.
+**All local gates green, verified 2026-08-13:** tripwire halts `train.py` at lr 5.0 naming the vision tower · 60 min QLoRA run completed clean (2,428 steps, no false alarm) · `eval --adapter` on night = **47.2%** · shard-0 regression gate reproduces **35.7 / 35.7 / 22.9 / 75.7 / 67.2 / 11.4** exactly · both manifests verify with **0** sha256 mismatches. **Only `--probe-batch` is unrun**, deliberately — it belongs on the T4.
 
 ---
 
@@ -205,7 +211,7 @@ Week 2 built every prerequisite: a frozen protocol, a scored baseline row, and a
 | **D** | Dataset | ✅ 2026-08-10. `nuscenes-qa-mini`, verified by probe (§6) |
 | **E** | Eval protocol | ✅ 2026-08-11. Frozen in `eval-protocol.md`; row 1 = **35.1%** vs 26.3% baseline, reproducible (§9). ⚠️ Split retired 2026-08-12 by D11 — row 1 stands, the split does not |
 | **F** | fp16 stability harness | ✅ 2026-08-11. Tripwire catches deliberate divergence; **a finite loss would not have** (§10) |
-| **W3** | First end-to-end QLoRA run on Kaggle | 🟡 **IN PROGRESS.** Loop, pool builder, Kaggle bridge and notebook built 2026-08-12; **D11 found and fixed mid-build**. Local dry-run + night row 1 still owed |
+| **W3** | First end-to-end QLoRA run | 🟡 **LOCAL RUN COMPLETE 2026-08-13** — QLoRA **47.2%** vs a 31.9% prior (+15.3 pp, p=6.5e-09) on the 3060. **D11 found and fixed mid-build.** Kaggle/T4 run + `--probe-batch` still owed; `requirements-kaggle.txt` still untested |
 | W4+ | DoRA/LoRA under matched budgets, edge latency, write-up | ⬜ |
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
@@ -683,6 +689,14 @@ This does **not** invalidate the benchmark — every run row pays the same easy 
   - `src/stability.py` took its only change since Milestone F: `build_trainable` gained `lora_alpha` / `lora_dropout` kwargs whose **defaults reproduce F exactly**. Shared rather than copied, because that function holds the §10 hard-fail on zero trainable vision params, and the copy that drifts is the one that goes blind.
   - **Training pool built and clean:** 1,817 rows over 276 images (6.58 questions/image), **0 shared images with the night eval split**, 25.9% majority (`yes`) vs night's 24.9% — close enough that the adapter is not learning a prior mismatched to what it is scored against. `results/train_pool_manifest.jsonl` tracked at 575 KB; 138 MB of PNG in gitignored `outputs/train_pool/`.
 
+- **2026-08-13 — Week 3 loop RUN, and the viability question answered: the dataset can rank methods.** Local QLoRA, 60 min wall-clock budget on the 3060, trained on the day pool and scored on night: **47.2% strict vs a 31.9% per-type prior = +15.3 pp**, McNemar **p = 6.5e-09** (b=98, c=199). Full record in §11.
+  - **The gain is perception, not wording — and only the prior baseline could show that.** Format compliance went **80.6% -> 100.0%**, so the adapter captured *all* the vocabulary headroom open question #8 feared. But the per-type prior is **already 100% format-compliant by construction**, so a purely vocabulary-driven model would have converged *on* the prior. It finished +15.3 pp above it. **Open question #8 now has a number: the vocabulary gain is real, fully captured, and worth 0 pp of the reported delta.** Against the old majority baseline the headline would read +22.3 pp and would have been unfalsifiable as to which effect produced it.
+  - **Open-ended moved most, which contradicts the standing expectation.** 15.4% -> **31.2%** (+2.5 pp -> +18.3 pp above its trivial constant), while binary went 51.2% -> 66.0% (-3.0 pp -> +11.9 pp). Milestone D called open-ended a near-collapse at 224x224 and treated binary as the part that worked; finetuning bought the most where the least was expected.
+  - **The tripwire works inside the training loop, not just in the harness that invented it.** `--lr 5.0` halted `src/train.py` at step 6 on 5 consecutive skips, naming `visual.patch_embed.proj.lora_A` — the same vision-tower signature Milestone F measured 13/13 times. The healthy 60 min run skipped 7 steps while the scaler settled to **1024** (F's exact value) and correctly did not fire.
+  - **An early throughput estimate was wrong by 2.6x, and the wall-clock budget absorbed it silently.** The first 18 steps ran at 3.91 s/step, implying ~920 steps for the hour; the run settled to ~0.65 s/step and delivered **2,428**. Warmup steps are not representative of throughput, and a wall-clock budget is exactly the design that does not care — the step count is what gives, and the results file records both.
+  - ⚠️ **This row's accuracy is a benchmark number; its wall-clock and VRAM columns are 3060 numbers.** W4's matched-budget comparison must be all-T4. 2,428 steps is not what a T4 hour buys, and `--probe-batch` was deliberately left unrun so that prediction stays sealed for the T4.
+  - **All gates green:** shard-0 regression gate reproduces 35.7 / 35.7 / 22.9 / 75.7 / 67.2 / 11.4 exactly; night and train-pool manifests both verify with **0** sha256 mismatches. Nothing in Week 3 disturbed the frozen artifacts.
+
 ---
 
 ## 9. Milestone E — frozen eval protocol & benchmark row 1 *(2026-08-11)*
@@ -819,3 +833,53 @@ Targeting only those would have attached **no adapter anywhere near the ViT** �
 4. `--clip-grad` — norms spike intermittently but recover
 
 All four are implemented flags, so the response to a Week 3 divergence is a command line, not a redesign.
+
+---
+
+## 11. Week 3 — the QLoRA run, and the answer to the viability question *(2026-08-13)*
+
+Training: `src/train.py`, record `results/train_qlora.json`. Scoring: `src/eval.py --split night --adapter`, record `results/eval_qlora_night.json`.
+
+### 🎯 The finding — the dataset can rank methods after all, and the gain is perception, not wording
+
+| Night split, n=659 | zero-shot | **QLoRA (1 h, day-trained)** | change |
+|---|---|---|---|
+| **strict exact-match** | 31.9% | **47.2%**  95% CI [43.4, 51.0] | **+15.3 pp** |
+| global majority (`always yes`) | 24.9% | 24.9% | — |
+| **per-question-type prior** | 31.9% | 31.9% | — |
+| **delta over the prior** | **+0.0 pp** | **+15.3 pp** | **the whole result** |
+| binary (n=303, trivial 54.1%) | 51.2% → **−3.0 pp** | 66.0% → **+11.9 pp** | +14.8 pp |
+| open-ended (n=356, trivial 12.9%) | 15.4% → +2.5 pp | 31.2% → **+18.3 pp** | +15.8 pp |
+| format compliance | 80.6% | **100.0%** | +19.4 pp |
+| scene ICC / deff / n_eff | 0.024 / 1.11 / 593 | 0.011 / 1.05 / 626 | clustering stays negligible |
+
+**Paired McNemar: p = 6.5×10⁻⁹** (b=98, c=199, χ²=33.67) — significant, and measured on the same 659 examples.
+
+### Why this is a perception result and not a vocabulary result
+
+This is exactly what the prior baseline was built to decide, one day earlier.
+
+Format compliance went **80.6% → 100.0%**: the adapter captured *all* of the vocabulary headroom that open question #8 worried about. If the gain were only vocabulary alignment, the score would have converged on the per-type prior — because **the prior is already 100% format-compliant by construction**; it only ever emits in-vocabulary answers. Instead the model finished **+15.3 pp above it**.
+
+**The delta over the prior is therefore net of the vocabulary effect.** Had we kept quoting the majority-class baseline, the headline would read +22.3 pp and would have been unfalsifiable as to which effect produced it. Open question #8 is now answered with a number: **the vocabulary gain is real, fully captured, and worth 0 pp of the reported delta.**
+
+The largest movement is where the least was expected: **open-ended, 15.4% → 31.2%**, from +2.5 pp above its trivial constant to **+18.3 pp**. Milestone D called open-ended a near-collapse at 224×224 and it is where finetuning bought the most.
+
+### Measured run facts worth carrying to Kaggle
+
+| Fact | Value |
+|---|---|
+| Optimizer steps in the 60 min budget | **2,428** — 1 full epoch over 1,817 rows |
+| Throughput | **1.48 s/step** average; ~0.65 s/step steady-state (the first ~20 steps are ~4 s and are not representative) |
+| Loss | 2.0963 (first 10) → **0.4854** (last 10) |
+| Scaler | settled at **1024**, 7 skips total, all early — Milestone F's exact value |
+| Peak VRAM | **3.60 GiB** at batch 1, no gradient checkpointing |
+| Tripwire | did not fire; correctly ignored the 7 settling skips |
+
+⚠️ **This row's accuracy is a benchmark number; its wall-clock and VRAM columns are 3060 numbers.** `eval-protocol.md` §7 and the wall-clock rule both say device-bound quantities are only comparable within a device. **Every W4 matched-budget row must come off a T4**, and this run's 2,428 steps are not the step count a T4 hour will buy.
+
+⚠️ **This is a domain-shift row: trained on day, scored on night.** It must be reported as that claim.
+
+### The tripwire, proven inside the training loop
+
+`python -m src.train --max-steps 12 --lr 5.0 --warmup 1 --grad-accum 1` halted at step 6 on 5 consecutive skips, naming `base_model.model.model.visual.patch_embed.proj.lora_A.default.weight`. Same signature Milestone F measured: **the overflow starts in the vision tower**. Record: `results/train_tripwire_check.json`. Milestone F proved the tripwire works; this proves `src/train.py` actually consults it.
