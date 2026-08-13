@@ -65,14 +65,15 @@ Night zero-shot: **31.9% strict**, 24.9% global majority → +7.0 pp, which read
 
 The global majority baseline answers `yes` to *"what colour is the truck"*. No real system does that. Question type is readable straight off the question text, so routing by type needs **no image, no training, no understanding** — and beats the global baseline by ~7 pp on both splits. **`src/eval.py` now computes `prior_baseline` and `delta_over_prior_pp` on every run.** Quote that delta.
 
-⚠️ This does **not** yet condemn the dataset. Zero-shot is a **lower bound**: format compliance is only 80.6% and the model has never seen the task. Finetuning may unlock perception the zero-shot number cannot show. That is precisely what the run above tests.
+✅ **This did NOT condemn the dataset, and the reasoning for suspending judgement was right.** Zero-shot is a **lower bound**: format compliance was only 80.6% and the model had never seen the task. Finetuning unlocked exactly the perception the zero-shot number could not show — QLoRA reached **47.2%, +15.3 pp over the prior** (§11). **A model scoring at a no-perception baseline is evidence about the model, not yet about the images.**
 
-#### ⏸️ Two predictions still genuinely sealed — capture BEFORE running
+#### ⏸️ One prediction still genuinely sealed — capture BEFORE running
 
-Neither has been measured, so both are still worth writing (prompts already in `learning-log.md`):
+Prompts for all four are in `learning-log.md`, rewritten 2026-08-13 with the measured figures filled in where a prediction was overtaken:
 
-- **#2, batch size on a 14.6 GiB T4** — `--probe-batch` was deliberately skipped, because it only informs the *Kaggle* batch size. Measured input: 3.53 GiB at batch 1 (1.47 GiB weights + 0.59 GiB fp32 upcast), sequences only **~96 tokens** (≈49 vision + ~40 text — much shorter than §3's 247, because `max_pixels` caps 224×224 inputs).
+- **#2, batch size on a 14.6 GiB T4** — `--probe-batch` was deliberately skipped, because it only informs the *Kaggle* batch size. Measured input: **3.60 GiB** at batch 1 (1.47 GiB weights + 0.59 GiB fp32 upcast), 4,411,392 trainable params, sequences only **~96 tokens** (≈49 vision + ~40 text — much shorter than §3's 247, because `max_pixels` caps 224×224 inputs). **A T4 hour is not 2,428 steps**; the 3060's throughput does not transfer.
 - ⚠️ **#3 (QLoRA day → night) was also overtaken** — Aadi chose to run the decisive experiment rather than pause for it, and the answer is 47.2% / +15.3 pp / perception. Recorded as overtaken in `learning-log.md`, same as #1. **#2 is the only prediction still genuinely sealed**, and `--probe-batch` has been deliberately left unrun to keep it that way.
+- **#4 is new and belongs to Week 4** — the order of QLoRA / LoRA / DoRA under a matched wall-clock budget, and whether fp16 LoRA's larger footprint helps or hurts it when the budget is time rather than epochs. Nothing has been run against it.
 
 ⚠️ **#1 (night zero-shot) was overtaken** — it was the go/no-go and had to run. Recorded as such in `learning-log.md` rather than quietly dropped.
 
@@ -82,7 +83,7 @@ Neither has been measured, so both are still worth writing (prompts already in `
 
 | File | State |
 |---|---|
-| `src/train.py` | **New.** Wall-clock budget, padded collation, grad accum, `--probe-batch`, Milestone F tripwire imported unchanged. **Collation verified correct on CPU** — supervised spans contiguous, aligned to each example's own prompt boundary, no pad or prompt token ever supervised. **The loop itself has never run.** |
+| `src/train.py` | **New.** Wall-clock budget, padded collation, grad accum, `--probe-batch`, Milestone F tripwire imported unchanged. **Collation verified correct on CPU** — supervised spans contiguous, aligned to each example's own prompt boundary, no pad or prompt token ever supervised. ✅ **Run end to end 2026-08-13**: 2,428 steps in a 60 min budget, tripwire silent on the healthy run and firing on `--lr 5.0`. |
 | `scripts/build_train_pool.py` | **New.** Day-domain pool + the leak check that found D11. |
 | `requirements-kaggle.txt` | **New. Untested** — verified only by running it on Kaggle. Deliberately omits torch. |
 | `notebooks/kaggle_qlora_train.ipynb` | **New.** Thin launcher. Never run. |

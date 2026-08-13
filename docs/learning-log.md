@@ -354,109 +354,186 @@ it is the ViT's *gradients*, not its activations.
 
 ---
 
-## Week 3 — the QLoRA loop, and the leak that stopped it (2026-08-12)
+## Week 3 — the leak, the straw-man baseline, and benchmark row 2 (2026-08-12/13)
 
-*This entry is out of the usual order on purpose. The session's biggest finding
-arrived before any prediction could be made about it, because nobody thought to
-predict it — which is itself the lesson.*
+*Two findings arrived before any prediction could be made about them, because
+nobody thought to predict them. That is itself the lesson of this entry: the
+things that nearly sank the project were not the risks on the risk register.*
 
-**What happened, in one paragraph:**
+---
 
-The Week 3 training-pool builder ran a train/eval image-overlap check that was
-written expecting to print `0`. It printed **235**. Of the 241 images in
-`day-train` shards 0–3, **235 also appear in the frozen eval split, with
-byte-identical PNGs**. Only 6 images of `day-train` sit outside it. But **0 of 560
-`(image, question, answer)` triples are shared** — so the answers do not leak, only
-the pixels do. `day-train` and `day-validation` are not two sets of images. They
-are two sets of *questions about the same ~276 keyframes*. The eval split moved to
-`night-validation` (measured intersection with day: exactly **0** images), and the
-training pool became the whole day domain. Full record: `memory.md` D11.
+### Finding 1 — the dataset's own train/validation split leaks its images
 
-**Questions to answer in your own words:**
+The pool builder ran a train/eval image-overlap check written in the expectation
+that it would print `0`. It printed **235**. Of the 241 images in `day-train`
+shards 0–3, **235 also sit in the frozen eval split, byte-identical by sha256**;
+only 6 images are outside it. But **0 of 560 `(image, question, answer)` triples**
+are shared. `day-train` and `day-validation` are not two sets of images — they are
+two sets of *questions about the same ~276 keyframes*. The answers never leaked.
+The pixels almost entirely did.
 
-<!-- 1. The check was a HARD FAILURE (exit non-zero, refuse to write the
-        manifest) rather than a warning. Say what would have happened if it had
-        been a warning printed above a successful build. Be specific about what
-        the accuracy number would have looked like.
+Fix: the eval split moved to `night-validation` (day ∩ night = **0** images,
+measured both ways) and the training pool became the whole day domain. Record:
+`memory.md` D11, `eval-protocol.md` Amendment 1.
+
+**Questions — answer in your own words:**
+
+<!-- 1. The check was a HARD FAILURE: exit non-zero, refuse to write the manifest.
+        Say what would have happened if it had been a warning printed above a
+        successful build. Be specific about what the ACCURACY NUMBER would have
+        looked like, and why that is the dangerous part.
 
      2. `token` was called a "scene" everywhere in the docs. It is a KEYFRAME.
-        Explain, in your own words, how that one wrong word is what let the leak
-        sit unnoticed through all of Milestone E. What did "270 distinct scenes"
-        make you picture, and what is actually there?
+        Explain how that one wrong word is what let this sit unnoticed through the
+        whole of Milestone E. What did "270 distinct scenes" make you picture, and
+        what is actually there?
 
-     3. Row 1 (35.1% zero-shot) is NOT invalidated by any of this, but a
-        finetuned row would have been. Why does the leak damage one and not the
-        other? Answer in terms of what "training" does that "zero-shot" does not.
+     3. Row 1 (35.1% zero-shot) is NOT invalidated by the leak, but any finetuned
+        row would have been. Why does the leak damage one and not the other?
+        Answer in terms of what training does that zero-shot does not.
 
      4. The answer vocabulary needed no change at all — night has 0 answers
-        outside it. Milestone E insisted the vocabulary be derived from
-        day-train rather than from the eval split, and at the time that looked
-        like pedantry about a 3.6 pp number. What did that decision buy here? -->
+        outside it. Milestone E insisted it be derived from day-train rather than
+        from the eval split, which at the time looked like pedantry about a 3.6 pp
+        number. What did that decision buy here? -->
 
-**Prediction 1 — zero-shot on night.**
+---
 
-> ⚠️ **This one was overtaken, and the reason is recorded rather than hidden.** The
-> night zero-shot run is the go/no-go for the whole split change — if night floors
-> out at the majority baseline, nothing downstream is worth building — so it was
-> run before the prediction was captured. **Its predictive value is gone.** The
-> thresholds below were still pre-registered before the number existed, and the
-> mechanism question is still worth answering; treat it as a "explain the result"
-> rather than a "call the result". Predictions 2 and 3 below are genuinely sealed.
+### Finding 2 — the baseline we had been reporting against was a straw man
 
-<!-- Day zero-shot was 35.1% strict against a 26.3% majority baseline (+8.8 pp).
-     Night's majority baseline is 24.9%.
+This is the more important of the two, and the more uncomfortable, because it had
+been inside every number since Milestone E.
 
-     Pre-registered thresholds, set before the number exists: >=10 pp over
-     baseline commits the split, 3-10 pp is marginal, <3 pp is a floor effect and
-     night cannot rank methods at all.
+The majority-class baseline answers `yes` to **everything** — including *"what
+colour is the truck"*. No real system does that. Answering the most common answer
+**of each question type** needs no image, no training and no understanding, since
+question type is readable straight off the question text:
 
-     Where does night land, and what is the DELTA over 24.9%?
+|  | strict | majority baseline | **per-type prior** | delta vs majority | **delta vs prior** |
+|---|---|---|---|---|---|
+| day, zero-shot | 35.1% | 26.3% | **33.4%** | +8.8 pp | **+1.7 pp** |
+| night, zero-shot | 31.9% | 24.9% | **31.9%** | +7.0 pp | **+0.0 pp** |
 
-     Then the part that matters more than the number: memory.md §6 measured that
-     224x224 supports presence judgements (binary 59.2%) but not identity or
-     counting (open-ended 13.8%). Darkness attacks something different from what
-     resolution attacks. Which of binary / open-ended do you expect night to hurt
-     more, and why? -->
+On night the model scored **210/659 — exactly what the prior scores.** On night
+*binary* questions it scored 51.2% against a 54.1% constant: **worse than the straw
+man.** `src/eval.py` now reports `prior_baseline` and `delta_over_prior_pp` on
+every run.
 
-**Prediction 2 — batch size on a T4 (owed since Milestone F):**
+**Questions — this is the part most worth getting right:**
 
-<!-- Measured: 3.53 GiB peak at batch 1, no gradient checkpointing, on the 3060.
-     Of that, 1.47 GiB is the 4-bit weights and +0.59 GiB is the fp32 upcast of
-     embed_tokens. LoRA r=8 is 4,411,392 trainable params. Every image is
-     224x224, so every example costs the same ~247 vision tokens.
-     The T4 has 14.6 GiB, ~14.4 usable.
+<!-- 1. In your own words: why does a model that cannot see ANYTHING still beat
+        the majority-class baseline by ~7 pp on this dataset? What is it doing?
 
-     What physical batch size fits, and what is the binding constraint?
+     2. Milestone D's own lesson was "measure the majority-class baseline before
+        any model runs", and we did exactly that. It still was not enough. What is
+        the sharper version of that rule that this session forces?
 
-     The mechanism is the answer, not the number: which parts of that 3.53 GiB
-     scale with batch size and which do not -- and WHY those particular parts
-     fall on either side of the line. `src/train.py --probe-batch` measures the
-     curve, so your reasoning is checkable against two points, not one. -->
+     3. A baseline is supposed to be the thing you must beat in order to have
+        shown anything. Say what makes a baseline HONEST rather than flattering —
+        and how you would spot a flattering one before it reaches a paper. -->
 
-**Prediction 3 — QLoRA after ~1 hour, day -> night.**
+---
 
-> ⚠️ **Also overtaken, and for a deliberate reason.** You chose to run the decisive
-> experiment rather than pause for the prediction, which was the right call -- the
-> viability of the whole dataset was riding on it. **Prediction 2 (batch size on a
-> T4) is the one still genuinely sealed**, and `--probe-batch` has been left unrun
-> on purpose so it stays that way until you write it.
->
-> The result, so the question below becomes "explain this" rather than "call this":
-> **47.2% strict, against a 31.9% no-perception prior -- +15.3 pp, McNemar
-> p = 6.5e-09.** Format compliance went 80.6% -> **100.0%**. Open-ended moved most
-> (15.4% -> 31.2%), binary 51.2% -> 66.0%.
->
-> The question worth sitting with: the prior baseline is **already 100%
-> format-compliant by construction**. Say in your own words why that single fact is
-> what proves the +15.3 pp is perception and not vocabulary -- and what the number
-> would have looked like if we had still been quoting the majority baseline.
+### The result — benchmark row 2
 
+60 min wall-clock budget on the 3060, trained on day, scored on night:
 
-<!-- This is now a DOMAIN-SHIFT result: trained on day, scored on night.
+| night, n=659 | zero-shot | **QLoRA** |
+|---|---|---|
+| strict | 31.9% | **47.2%** |
+| delta over the per-type prior | +0.0 pp | **+15.3 pp** |
+| binary (trivial 54.1%) | 51.2% | 66.0% |
+| open-ended (trivial 12.9%) | 15.4% | **31.2%** |
+| format compliance | 80.6% | **100.0%** |
 
-     On day, 209 of 725 zero-shot errors (28.8%) were the model answering
-     sensibly in the wrong words; the other 71.2% were genuine misperception.
+Paired McNemar **p = 6.5e-09**. The dataset can rank methods.
 
-     Where does strict accuracy land on night? And which half moves -- does the
-     vocabulary-alignment gain survive the day->night shift, or is it the
-     perception half that changes? Say why. -->
+---
+
+**Prediction 1 — zero-shot on night.** ⚠️ **Overtaken.**
+
+> It was the go/no-go for the whole split change, so it had to run before the
+> prediction was captured. Its predictive value is gone; the reason is recorded
+> here rather than quietly dropped. Answer it as "explain this", not "call this".
+
+<!-- Measured: night zero-shot 31.9% strict — +7.0 pp over the 24.9% majority
+     baseline, but +0.0 pp over the per-type prior.
+
+     The interesting part is WHICH HALF broke. Day -> night:
+         binary      59.2% -> 51.2%   (from +3.1 pp above its trivial constant
+                                       to -3.0 pp, i.e. BELOW it)
+         open-ended  13.8% -> 15.4%   (slightly BETTER)
+
+     memory.md §6 established that 224x224 supports presence judgements but not
+     identity or counting. Darkness attacks something different from what
+     resolution attacks. Explain why darkness destroyed the BINARY half — the half
+     that was working — and left open-ended alone. -->
+
+**Prediction 2 — batch size on a T4.** 🔒 **Still sealed. Write it before the Kaggle
+session; `--probe-batch` has been deliberately left unrun so this stays a real
+prediction.**
+
+<!-- Measured inputs, all from this project. NOTE that two were corrected 08-13:
+
+       peak VRAM, batch 1, no gradient checkpointing, 3060 : 3.60 GiB
+       4-bit NF4 weights, resident                        : 1.47 GiB
+       fp32 upcast of embed_tokens (311M params)          : +0.59 GiB
+       trainable LoRA params (r=8)                        : 4,411,392
+       sequence length per example                        : ~96 tokens
+                                                            (~49 vision + ~40 text)
+       T4                                                 : 14.6 GiB, ~14.4 usable
+
+     THE CORRECTED FIGURE MATTERS: sequences are ~96 tokens, NOT the ~247 vision
+     tokens memory.md §3 quotes. max_pixels caps a 224x224 image well below the
+     model's ceiling, so each example is far cheaper than the headline geometry
+     suggests.
+
+     What physical batch size fits on the T4, and what is the binding constraint?
+
+     The MECHANISM is the answer, not the number: which parts of that 3.60 GiB
+     scale with batch size and which do not — and WHY those particular parts fall
+     on either side of the line. --probe-batch measures the curve, so your
+     reasoning gets checked against two points rather than one. -->
+
+**Prediction 3 — QLoRA day → night.** ⚠️ **Overtaken, deliberately.**
+
+> You chose to run the decisive experiment rather than pause for the prediction.
+> That was the right call — the viability of the entire dataset was riding on it.
+
+<!-- Measured: 47.2% strict, +15.3 pp over the 31.9% prior, McNemar p = 6.5e-09.
+     Format compliance 80.6% -> 100.0%.
+     Open-ended moved most: 15.4% -> 31.2%. Binary: 51.2% -> 66.0%.
+
+     1. The prior baseline is ALREADY 100% format-compliant by construction — it
+        only ever emits in-vocabulary answers. Say in your own words why that
+        single fact is what proves the +15.3 pp is perception and not vocabulary.
+        What could we have concluded if we were still quoting the majority
+        baseline, which would have read +22.3 pp?
+
+     2. Open question #8 feared that most of the finetuning gain would be
+        output-vocabulary alignment. Format compliance DID go to 100%, so that
+        gain was real and fully captured. Explain how it can be both REAL and
+        worth 0 pp of the reported delta.
+
+     3. Milestone D called open-ended a "near-collapse" at 224x224 and treated
+        binary as the half that worked. Finetuning bought +15.8 pp on open-ended
+        and +14.8 pp on binary — the most where the least was expected. What does
+        that say about reading a ZERO-SHOT score as a measure of what the images
+        can support? -->
+
+**Prediction 4 — Week 4. Write before the LoRA and DoRA rows run:**
+
+<!-- QLoRA (4-bit base + LoRA adapter) scored 47.2% on night under a 60 min budget.
+     Week 4 runs LoRA (fp16 base) and DoRA (4-bit base) under the SAME wall-clock
+     budget on the same T4.
+
+     Predict the ORDER of the three and the size of the gaps.
+
+     Then the part that decides whether the thesis holds: LoRA in fp16 has a much
+     bigger memory footprint, so under a MATCHED WALL-CLOCK budget it may fit
+     fewer steps. Say whether you expect that to help or hurt it, and why — and
+     what it would mean for the thesis if the cheapest method won.
+
+     Also: eval.py measures scene ICC per run. Zero-shot on night was 0.024 and
+     QLoRA 0.011 — both negligible. Do you expect an ADAPTER to induce more
+     scene-level correlation than the base model, or less? (Open question #10.) -->
