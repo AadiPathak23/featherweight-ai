@@ -469,31 +469,46 @@ Paired McNemar **p = 6.5e-09**. The dataset can rank methods.
      resolution attacks. Explain why darkness destroyed the BINARY half — the half
      that was working — and left open-ended alone. -->
 
-**Prediction 2 — batch size on a T4.** 🔒 **Still sealed. Write it before the Kaggle
-session; `--probe-batch` has been deliberately left unrun so this stays a real
-prediction.**
+**Prediction 2 — batch size on a T4.** ✅ **Committed 2026-08-14, before
+`--probe-batch` ran.**
 
-<!-- Measured inputs, all from this project. NOTE that two were corrected 08-13:
+*Measured inputs it was made against, all from this project:*
 
-       peak VRAM, batch 1, no gradient checkpointing, 3060 : 3.60 GiB
-       4-bit NF4 weights, resident                        : 1.47 GiB
-       fp32 upcast of embed_tokens (311M params)          : +0.59 GiB
-       trainable LoRA params (r=8)                        : 4,411,392
-       sequence length per example                        : ~96 tokens
-                                                            (~49 vision + ~40 text)
-       T4                                                 : 14.6 GiB, ~14.4 usable
+| | |
+|---|---|
+| peak VRAM, batch 1, no gradient checkpointing, 3060 | **3.60 GiB** |
+| 4-bit NF4 weights, resident | 1.47 GiB |
+| fp32 upcast of `embed_tokens` (311M params) | +0.59 GiB |
+| trainable LoRA params (r=8) | 4,411,392 |
+| sequence length per example | **~96 tokens** (~49 vision + ~40 text) |
+| T4 (one device — the loader is `device_map="cuda:0"`) | 14.6 GiB, ~14.4 usable |
 
-     THE CORRECTED FIGURE MATTERS: sequences are ~96 tokens, NOT the ~247 vision
-     tokens memory.md §3 quotes. max_pixels caps a 224x224 image well below the
-     model's ceiling, so each example is far cheaper than the headline geometry
-     suggests.
+*The ~96 is the figure to reason from, not the ~247 vision tokens `memory.md` §3
+quotes: `max_pixels` caps a 224×224 image well below the model's ceiling, so each
+example is far cheaper than the headline geometry suggests.*
 
-     What physical batch size fits on the T4, and what is the binding constraint?
+*Asked: what physical batch size fits on the T4, and what is the binding constraint?*
 
-     The MECHANISM is the answer, not the number: which parts of that 3.60 GiB
-     scale with batch size and which do not — and WHY those particular parts fall
-     on either side of the line. --probe-batch measures the curve, so your
-     reasoning gets checked against two points rather than one. -->
+> batch 8, VRAM is the constraint
+
+> 📌 Noted at prediction time, not after: this is a number and a named constraint
+> with no mechanism behind either — the same shape as Milestone F's two predictions,
+> which were both **right** and taught nothing, because there was nothing to check
+> except the outcome. `memory.md` §1 names this as the standing pattern to break,
+> and Week 3 is where it starts costing GPU-hours.
+>
+> It matters here because `--probe-batch` does not print a number, it prints a
+> **curve**: a fixed intercept, a per-example slope, and a `seq_len` column that
+> drifts upward as padding grows. Reasoning can be checked against all three. "8"
+> can only be checked against whether 8 appears.
+>
+> Two things still worth writing before the probe runs, because they make the
+> reconcile a comparison of reasoning rather than of one integer:
+> **(a)** roughly how much of the 14.4 GiB is fixed cost — and why is AdamW's state
+> size independent of batch size when the activations are not?
+> **(b)** what makes VRAM bind *before the pool does*? At batch 8 that is ~227 steps
+> per epoch over 1,817 rows, so a 60 min budget runs many epochs across the same 276
+> images.
 
 **Prediction 3 — QLoRA day → night.** ⚠️ **Overtaken, deliberately.**
 

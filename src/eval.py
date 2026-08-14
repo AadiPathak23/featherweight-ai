@@ -322,12 +322,31 @@ def run_compare(path_a: Path, path_b: Path) -> int:
     b = json.loads(path_b.read_text(encoding="utf-8"))
     ra, rb = a["records"], b["records"]
 
+    # HARD FAILURE, not a warning. This used to print a caution and then compute a
+    # p-value anyway -- which is the exact shape of the mistake D11 was caught by
+    # avoiding: a warning above a plausible-looking result gets scrolled past, and
+    # what survives into the write-up is the number. A day row and a night row share
+    # no images, so the pairing is empty and McNemar would report p = 1.0 on b=c=0
+    # while the two accuracies sit 15 pp apart. Refuse instead.
+    split_a = a.get("config", {}).get("split")
+    split_b = b.get("config", {}).get("split")
+    if split_a != split_b:
+        raise SystemExit(
+            f"REFUSING TO COMPARE: {path_a.name} was scored on split '{split_a}' and "
+            f"{path_b.name} on split '{split_b}'.\n"
+            "McNemar is a PAIRED test -- it only means anything when both runs saw "
+            "the same examples. Two splits are two different questions."
+        )
+
     key = lambda r: (r.get("image") or r["question"], r["gold"])  # noqa: E731
     map_b = {key(r): r for r in rb}
     paired = [(x, map_b[key(x)]) for x in ra if key(x) in map_b]
     if len(paired) != len(ra) or len(paired) != len(rb):
-        print(f"⚠️  only {len(paired)} of {len(ra)}/{len(rb)} examples matched — "
-              "these runs are not on the same split; the comparison is not valid")
+        raise SystemExit(
+            f"REFUSING TO COMPARE: only {len(paired)} of {len(ra)}/{len(rb)} examples "
+            "paired.\nThese runs did not see the same rows, so the pairing that gives "
+            "McNemar its power does not exist. Check --limit and --shard0-only."
+        )
 
     only_a = sum(1 for x, y in paired if x["strict"] and not y["strict"])
     only_b = sum(1 for x, y in paired if y["strict"] and not x["strict"])
