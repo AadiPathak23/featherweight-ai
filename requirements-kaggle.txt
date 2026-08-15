@@ -41,6 +41,24 @@ pillow
 # shards are ~460 MB each and a Kaggle session is on the clock.
 hf_xet
 
+# ---------------------------------------------------------------------------
+# MUST BE REMOVED AFTER INSTALL, and pip cannot express it: torchao
+# ---------------------------------------------------------------------------
+# Kaggle's base image ships torchao 0.10.0. peft's is_torchao_available() RAISES
+# ImportError when torchao is present but older than 0.16.0 rather than returning
+# False, and LoRA injection calls it on every target module -- so get_peft_model()
+# dies before the first step. Measured on a live T4 2026-08-15 with peft 0.19.1;
+# peft 0.20.0 contains the identical raise, so pinning peft does not help.
+#
+# It cannot reproduce locally: torchao is not installed there, so the check
+# short-circuits on find_spec() and returns False. This is the failure mode a
+# separate requirements file exists to catch, and it was NOT a version this file
+# pins -- it was a package the image already had.
+#
+# The notebook runs `pip uninstall -y torchao` after installing this file. We never
+# use torchao (bitsandbytes does the quantization), so removing it is targeted;
+# upgrading it would add a torch-version-coupled package we have no use for.
+
 # NOT INCLUDED, on purpose:
 #   torch / torchvision  — see above.
 #   trl                  — src/train.py is a plain PyTorch loop. It has to be,
