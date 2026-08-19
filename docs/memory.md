@@ -52,7 +52,7 @@ python -m src.train --budget-minutes 60 --batch-size <from probe> --run-name qlo
 python -m src.eval --split night --adapter outputs/adapters/qlora_t4 --run-name eval_qlora_t4
 ```
 
-- ⚠️ **`requirements-kaggle.txt` has still never run.** It is the one genuinely untested artifact and the first thing that can fail.
+- ⚠️ ~~**`requirements-kaggle.txt` has still never run.**~~ ✅ **Superseded 2026-08-15** — it ran, and failed on `torchao` rather than on torch. Fixed in `cbe8125`; see §12. *(Line kept: this block is the 08-13 resume state, not current.)*
 - ⚠️ **The local row's wall-clock and VRAM columns are 3060 numbers.** W4's matched-budget comparison must be **all-T4** — this run's 2,428 steps are not what a T4 hour buys.
 - **W4 can start immediately after**: LoRA (fp16) and DoRA rows under the same 60 min budget, then McNemar between them. The whole comparison machinery is now proven end to end.
 

@@ -32,7 +32,10 @@ Every run file carries the same top-level shape, so runs stay diffable:
   open-ended ones collapse to 11.4%.
 - **Always store which split.** `config.split` is `night` or `day`. Since 2026-08-12
   (D11) these are two different benchmarks — a night row and a day row must never be
-  put in the same column. `--compare` will warn when two runs do not pair.
+  put in the same column. **`--compare` refuses outright** (exit non-zero) when the two runs
+  carry different `config.split` or fail to pair example-for-example — it used to warn and
+  compute a p-value anyway, which is how a day-vs-night comparison could have reached a
+  write-up looking normal.
 - Small JSON only. No weights, images, or dataset shards.
 
 ## Files
@@ -47,21 +50,45 @@ Every run file carries the same top-level shape, so runs stay diffable:
 | `eval_split_night_manifest.jsonl` | **THE CURRENT BENCHMARK SPLIT.** **659** rows of `night-validation` shards 0–4 over **115** images. Same schema as the day manifest. Verify with `python scripts/build_eval_split.py --verify`. |
 | `eval_zeroshot_night.json` | **Benchmark row 1 (night)** — zero-shot on the night split: **31.9% strict**. It landed at **+7.0 pp** over the 24.9% majority baseline, i.e. inside the pre-registered *marginal* band (≥10 pp was the commit bar), and at **+0.0 pp** over the per-type prior. ⚠️ **The split was not committed on this number** — it was committed on `eval_qlora_night.json` showing +15.3 pp after finetuning. |
 | `train_pool_manifest.jsonl` | **The training pool** — the whole `day` domain (both of its splits, which share images and so carry no train/val distinction). Written only if the image-leak check against the night split passes. |
-| `train_batch_probe.json` | ⏳ **Not yet produced** — `--probe-batch` is deliberately unrun so the T4 batch-size prediction stays sealed. Peak VRAM vs physical batch size, measured until OOM. Two points separate the fixed cost (weights + fp32 upcast + optimizer state) from the part that scales (retained activations); one point cannot. |
-| `train_qlora.json` | **The QLoRA training run** (local, 3060): 60 min budget → **2,428 optimizer steps**, 1 epoch over 1,817 rows, loss 2.096 → 0.485, 7 scaler skips, scale settled at 1024, peak 3.60 GiB, tripwire silent. |
+| `train_batch_probe*.json` | ⚠️ **Measured on a T4 2026-08-15, but the file was lost** to session teardown (see the note below the table). The curve: batch 1/2/4/8 → 3.44 / 4.14 / 5.64 / 8.70 GiB, **batch 16 OOM**; fixed cost **2.69 GiB**, per-example **0.752 GiB**. Numbers preserved in `memory.md` §12 and in `notebooks/kaggle_qlora_train_t4_run.ipynb`. |
+| `train_qlora.json` | **The QLoRA training run on the 3060**: 60 min budget → **2,428 optimizer steps**, 1 epoch over 1,817 rows, loss 2.096 → 0.485, 7 scaler skips, scale settled at 1024, peak 3.60 GiB, tripwire silent. ⚠️ **Not a benchmark row.** The T4 fitted **6,924** steps into the same hour; under a wall-clock budget the step count — and therefore the accuracy — is device-bound (`memory.md` §12). This file proved the loop, not a benchmark position. |
 | `train_tripwire_check.json` | **Proof that `src/train.py` consults the tripwire**, not just that the tripwire works. `--lr 5.0` halts at step 6 on 5 consecutive skips, naming `visual.patch_embed.proj.lora_A`. A clean run here is a failure. |
-| `eval_qlora_night.json` | **Benchmark row 2** — QLoRA, day-trained, scored on night. **47.2% strict** vs a **31.9% per-type prior** (+15.3 pp); format compliance **100%**; binary 66.0%, open-ended 31.2%. |
+| `eval_qlora_night.json` | **QLoRA on the 3060**, day-trained, scored on night: **47.2% strict** vs a **31.9% per-type prior** (+15.3 pp); format compliance **100%**; binary 66.0%, open-ended 31.2%. This is the run that committed the night split (the zero-shot number alone was inside the marginal band). ⚠️ **Superseded as benchmark row 2** by the T4 run — same method, same hour, 58.9%. |
 | `stability_baseline.json` | **Milestone F** — a healthy fp16 LoRA run completes with no false alarm from the tripwire. |
 | `stability_sabotage.json` | **Milestone F success criterion** — an inflated LR diverges and the tripwire halts it with a named cause. A *clean* sabotage run is a failure. |
+
+## ⚠️ The T4 run has no files here, and that is a loss not a choice
+
+**Benchmark row 2 is the T4 run of 2026-08-15 — 58.9% strict, +27.0 pp over the prior,
+McNemar p = 6.4e-24.** Its three result files (`train_qlora_t4.json`,
+`eval_qlora_t4.json`, `train_batch_probe_t4.json`) and its adapter **do not exist**: the
+interactive Kaggle session was torn down before Save Version ran, so `/kaggle/working`
+was empty at save time and the saved version carries no output.
+
+Every *metric* survives, in `memory.md` §12 and in the executed
+`notebooks/kaggle_qlora_train_t4_run.ipynb`. The **659 per-example `records` do not**,
+which is the part that matters here: McNemar is a paired test, so **W4 cannot compare
+LoRA or DoRA against this row** and must re-run QLoRA on the T4 alongside them.
+
+**This is exactly what this directory exists to prevent** — *"a metric with no committed
+record is a metric you cannot defend later."* The rule was right; the failure was in
+getting the file off Kaggle, not in the rule. **Fix for W4: run via "Save Version → Save
+& Run All (Commit)"**, which executes in a batch session and persists `/kaggle/working`
+as versioned output automatically. Interactive Run All persists nothing once the session
+ends.
 
 ## Comparing two runs
 
 ```
-python -m src.eval --compare results/eval_zeroshot.json results/eval_qlora.json
+python -m src.eval --compare results/eval_zeroshot_night.json results/eval_qlora_night.json
 ```
 
 Runs **McNemar** on the paired per-example outcomes rather than comparing the two
 accuracies' confidence intervals. Both runs score the same examples, so per-item
 difficulty cancels and only the disagreements carry information — which is what makes
-1,117 rows enough to separate methods a couple of points apart. See
+**659** rows enough to separate methods a couple of points apart. See
 `docs/eval-protocol.md` §8.
+
+**Both files must be on the same split**, and since 2026-08-15 `--compare` enforces that
+rather than warning about it. Pairing the retired day zero-shot against a night row
+matches zero examples and would have printed a p-value under a caution.
