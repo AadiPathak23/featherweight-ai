@@ -4,13 +4,34 @@
 >
 > 🧭 **How we work — read before doing anything.** Aadi is deliberately working above his current level and wants to *learn*, not receive finished code. Per milestone: **frame** briefly → **Aadi writes a prediction before anything runs** → **build in small pieces**, explaining each non-obvious decision where it appears → **reconcile** prediction vs reality, digging hardest where he was wrong → **Aadi logs it in his own words**. Label each thing **Tier 1** (learn deeply: LoRA/DoRA math, quantization, fp16 stability, experiment design), **Tier 2** (know the shape: HF/PEFT APIs), or **Tier 3** (plumbing: venv, git, Kaggle UI). No black boxes — every flag and magic number gets a reason. Say plainly what is measured fact vs. estimate vs. untested bet. Where he can reason it out, ask and wait. One milestone per session; depth over throughput.
 > Everything below traces to a command output or URL captured on the stated date — nothing asserted from recall.
-> Last updated: 2026-08-13 (session close — Week 3 half built; **D11: the eval split moved day → night after the leak check fired**; the night zero-shot landed exactly on a no-perception baseline, and **QLoRA then beat it by +15.3 pp — the dataset is viable**)
+> Last updated: 2026-08-15 (**WEEK 3 CLOSED on a T4**: benchmark row 2 = **58.9%, +27.0 pp over the prior, p=6.4e-24**. `requirements-kaggle.txt` proven and fixed. **A wall-clock budget makes ACCURACY device-bound** — the T4 bought 2.85x the steps and +11.7 pp. Prediction #2 correct. ⚠️ Results JSONs + adapter lost to session teardown; see §12)
 
 ---
 
 ## 1. START HERE — session resume
 
-### 🔖 Where we left off — end of session 2026-08-13
+### 🔖 Where we left off — end of session 2026-08-15
+
+**Week 3 is closed. The QLoRA loop ran end to end on a Kaggle T4 and produced benchmark row 2: 58.9% strict on night against a 31.9% no-perception prior — +27.0 pp, McNemar p = 6.4e-24. Full record in §12.**
+
+#### ✅ What this session settled
+
+- **`requirements-kaggle.txt` has finally run.** It failed — on **torchao**, a package the file never mentions and Windows never installs, not on torch (which resolved exactly as Milestone C measured). Fixed in `cbe8125`. §12 has the mechanism.
+- **Prediction #2 was right on both counts** — batch 8, VRAM binding. 8 fits at 8.70 GiB, 16 OOMs. Reconciled in `learning-log.md` and §12.
+- 🚨 **A wall-clock budget makes accuracy device-bound.** Same code, data and effective batch: the 3060 ran 2,428 steps (1 epoch) and scored 47.2%; the T4 ran **6,924** (3 epochs) and scored **58.9%**. **The 3060's 47.2% must never sit in a column beside a T4 number.**
+
+#### ▶️ NEXT SESSION — Week 4, and it starts by re-running this row
+
+⚠️ **The results JSONs and the adapter were lost.** The interactive session was torn down before Save Version ran, so `/kaggle/working` was empty at save time. Every printed metric survives in `notebooks/kaggle_qlora_train_t4_run.ipynb`; the 659 per-example records do not.
+
+**So W4 re-runs QLoRA on the T4** alongside LoRA (fp16) and DoRA under the same 60 min budget — which is the right design anyway, all three rows from one image and one session. ~3 GPU-hr of a 30 hr/week quota.
+
+- ⚠️ **Use "Save Version → Save & Run All (Commit)", not interactive Run All.** A committed run executes in a batch session and persists `/kaggle/working` automatically. That is what would have saved this session's artifacts.
+- **Upload `fw_pixels.zip` as a Kaggle Dataset first** (157 MB, built and waiting in gitignored `outputs/`). §5 rebuilds cost ~30 min of GPU quota per session with the GPU at 0%, and W4 pays it three more times otherwise. This was §6's plan from Milestone D and is still undone.
+- **Prediction #4 is owed before the LoRA and DoRA rows run** — the ordering of the three under a matched wall-clock budget. Prompt is in `learning-log.md`.
+- **Two Kaggle accounts exist.** The project account is `aadipathak2323@gmail.com` = username **`aadipathak12`**; the browser's default Google session is a *different* account, `aadipathak`, and `kaggle auth login` will silently pick it. Delete `~/.kaggle/credentials.json` to switch.
+
+### 🗄️ Previous session — 2026-08-13, the local QLoRA run
 
 **Week 3's loop is built, run and green — but only after a reason nobody predicted stopped it first: the dataset's own train/validation split shares its images. The eval split moved `day` → `night` (D11) before a single training step ran. Then the night zero-shot showed the model scoring *exactly* at a baseline that needs no perception at all.**
 
@@ -212,7 +233,7 @@ Week 2 built every prerequisite: a frozen protocol, a scored baseline row, and a
 | **D** | Dataset | ✅ 2026-08-10. `nuscenes-qa-mini`, verified by probe (§6) |
 | **E** | Eval protocol | ✅ 2026-08-11. Frozen in `eval-protocol.md`; row 1 = **35.1%** vs 26.3% baseline, reproducible (§9). ⚠️ Split retired 2026-08-12 by D11 — row 1 stands, the split does not |
 | **F** | fp16 stability harness | ✅ 2026-08-11. Tripwire catches deliberate divergence; **a finite loss would not have** (§10) |
-| **W3** | First end-to-end QLoRA run | 🟡 **LOCAL RUN COMPLETE 2026-08-13** — QLoRA **47.2%** vs a 31.9% prior (+15.3 pp, p=6.5e-09) on the 3060. **D11 found and fixed mid-build.** Kaggle/T4 run + `--probe-batch` still owed; `requirements-kaggle.txt` still untested |
+| **W3** | First end-to-end QLoRA run | ✅ **COMPLETE 2026-08-15** — T4 row **58.9%** vs a 31.9% prior (**+27.0 pp**, p=6.4e-24), 6,924 steps/60 min. `requirements-kaggle.txt` proven + fixed (torchao). Prediction #2 correct. ⚠️ Results JSONs + adapter lost to teardown → W4 re-runs it (§12) |
 | W4+ | DoRA/LoRA under matched budgets, edge latency, write-up | ⬜ |
 
 ⚠️ **Security note (2026-08-07):** an HF token was briefly pasted into a notebook markdown cell and a chat log. It was **revoked immediately** and replaced. Standing rule: credentials are injected at runtime from Kaggle Secrets / env vars, never typed into a file that gets saved, committed or shared. Applies doubly to the **write** token needed in Week 6.
@@ -884,3 +905,83 @@ The largest movement is where the least was expected: **open-ended, 15.4% → 31
 ### The tripwire, proven inside the training loop
 
 `python -m src.train --max-steps 12 --lr 5.0 --warmup 1 --grad-accum 1` halted at step 6 on 5 consecutive skips, naming `base_model.model.model.visual.patch_embed.proj.lora_A.default.weight`. Same signature Milestone F measured: **the overflow starts in the vision tower**. Record: `results/train_tripwire_check.json`. Milestone F proved the tripwire works; this proves `src/train.py` actually consults it.
+
+---
+
+## 12. Week 3 on a T4 — benchmark row 2, and what a wall-clock budget does across devices *(2026-08-15)*
+
+Run record: `notebooks/kaggle_qlora_train_t4_run.ipynb` (the executed notebook, outputs captured).
+⚠️ **The results JSONs and the adapter were lost** — see "What did not survive" below.
+
+### 🎯 The row
+
+| night split, n=659 | zero-shot | QLoRA 3060 (60 min) | **QLoRA T4 (60 min)** |
+|---|---|---|---|
+| **strict exact-match** | 31.9% | 47.2% | **58.9%**  95% CI [55.1, 62.6] |
+| per-question-type prior | 31.9% | 31.9% | 31.9% |
+| **delta over the prior** | +0.0 pp | +15.3 pp | **+27.0 pp** |
+| binary (n=303, trivial 54.1%) | 51.2% | 66.0% | **77.2%** → +23.1 pp |
+| open-ended (n=356, trivial 12.9%) | 15.4% | 31.2% | **43.3%** → +30.3 pp |
+| format compliance | 80.6% | 100.0% | **100.0%** |
+| scene ICC / deff / n_eff | 0.024 / 1.11 / 593 | 0.011 / 1.05 / 626 | 0.015 / 1.07 / 616 |
+
+**Paired McNemar vs night zero-shot: p = 6.4×10⁻²⁴** (b=65, c=243, χ²=101.7), same 659 examples.
+Open-ended again moves most, as it did on the 3060 — the half Milestone D called a near-collapse at 224×224.
+
+### 🚨 The finding — under a wall-clock budget, ACCURACY is device-bound too
+
+| | 3060 | T4 |
+|---|---|---|
+| optimizer steps in 60 min | 2,428 | **6,924** |
+| epochs over 1,817 rows | 1 | **3** |
+| s/step | 1.48 | **0.52** |
+| peak VRAM (batch 1) | 3.60 GiB | **3.60 GiB** |
+| **strict** | 47.2% | **58.9%** |
+
+Same code, same data, same effective batch (1), same 60 minutes. The T4 is **2.85× faster**, buys 2.85× the steps, and scores **+11.7 pp** higher.
+
+`plan.md` §6 and `eval-protocol.md` §7 say wall-clock and VRAM columns are only comparable within a device. **That understates it.** When the budget is wall-clock, device speed converts directly into optimization steps, so the *accuracy* column is device-bound as well. The 3060 row and the T4 row are not two measurements of one quantity; they are the same method under the same nominal budget on different hardware — exactly the comparison the thesis forbids.
+
+**Consequence: every W4 row must be a T4 row, and the 3060's 47.2% must never appear in a column beside a T4 number.** The 3060 row's value is now historical — it proved the loop and the dataset, not a benchmark position.
+
+### 🔒 Prediction #2, reconciled — right on both counts
+
+Sealed 2026-08-14 before `--probe-batch` ran: **"batch 8, VRAM is the constraint."**
+
+```
+batch  1  seq 101  peak 3.44 GiB
+batch  2  seq 101  peak 4.14 GiB
+batch  4  seq 101  peak 5.64 GiB
+batch  8  seq 104  peak 8.70 GiB
+batch 16  OOM
+fit over 1..8:  fixed 2.69 GiB · per-example 0.752 GiB · extrapolated max 15
+```
+
+**Both halves correct.** 8 is the largest batch that fits; 16 dies by OOM. The linear fit puts the true ceiling near 15, consistent with 16 failing.
+
+What the curve adds that the prediction did not: **per-example cost is 0.752 GiB against a 2.69 GiB fixed cost.** Three quarters of a gigabyte of retained activations for a ~101-token sequence, against a model whose weights are 1.47 GiB — which is why the batch ceiling is single-digit on a 14.6 GiB card. The vision tower dominates activation memory, the same tower that owns the fp16 overflow story in §10.
+
+⚠️ **A caution given at prediction time was wrong.** Padding was expected to inflate `seq_len` as batch grew, making the linear fit under-predict. Measured: **101 → 101 → 101 → 104**. These questions are near-uniform in length, so padding costs almost nothing and the fit is on firmer ground than warned.
+
+### ✅ `requirements-kaggle.txt` has now run — and it failed on an axis nobody guarded
+
+The file was built to defend against a torch mismatch. **Torch was fine**: `2.10.0+cu128`, CUDA 12.8, `capability=(7,5)`, exactly Milestone C's measurement, no drift under the pinned environment.
+
+It broke on **`torchao`**, which the file does not mention and Windows does not install. Kaggle's base image ships 0.10.0, and peft's `is_torchao_available()` **raises** on an old torchao instead of returning `False`; LoRA injection calls it per target module, so `get_peft_model()` died before step 1. **peft 0.20.0 carries the identical raise**, so matching the local pin would not have helped. Fixed by removing torchao after install (commit `cbe8125`).
+
+**The lesson is the shape, not the package:** a separate requirements file protects against versions it *names*. This failure came from a package already in the image. Third time this project has hit right-concern/wrong-mechanism, after the uint8-vs-int32-offset correction (§6) and ViT gradients-not-activations (§10).
+
+### 📦 What did not survive, and what it costs
+
+The interactive session was torn down before **Save Version** ran, so `/kaggle/working` was empty at save time. `kaggle kernels files` returns nothing; the saved version carries the notebook and its captured console output only.
+
+**Lost:** `results/train_qlora_t4.json`, `results/eval_qlora_t4.json` (with its 659 per-example records), `results/train_batch_probe_t4.json`, and the 20 MB adapter.
+**Survived:** every printed metric, preserved in the executed notebook.
+
+**Cost:** W4 cannot run paired McNemar against this row, because the per-example outcomes are gone. **W4 must re-run QLoRA on the T4** alongside LoRA and DoRA. That is ~1 GPU-hour of a 30 hr/week quota and is arguably the right design anyway — all three rows from one session and one image.
+
+⚠️ **Process fix for W4: use "Save Version → Save & Run All (Commit)" rather than interactive Run All.** A committed run executes in a batch session and persists `/kaggle/working` as versioned output automatically. Interactive execution persists nothing unless a version is saved *while the session still holds the files*, and §10 of the notebook only warns about teardown — it does not say that saving after teardown saves nothing.
+
+### 🔑 Two Kaggle accounts exist, and only one was written down
+
+`memory.md` §2 records the account as `aadipathak2323@gmail.com`. That account's username is **`aadipathak12`** and it owns this run. A second account, **`aadipathak`**, is the browser's default Google session, and `kaggle auth login` silently authenticated as it — producing `Permission 'kernels.get' was denied` on a notebook that plainly existed. Credentials cache at `C:\Users\aadip\.kaggle\credentials.json`; delete it to switch accounts.

@@ -1,7 +1,7 @@
 # featherweight-ai — Project Plan
 
 > Living document. Update as decisions land. Companions: [`memory.md`](./memory.md) (state + measured facts — **authoritative**) and [`learning-log.md`](./learning-log.md) (Aadi's own-words notes).
-> Last updated: 2026-08-13 · **Weeks 1 and 2 COMPLETE.** D ✅ dataset · E ✅ eval protocol frozen, benchmark row 1 = 35.1% · F ✅ fp16 tripwire, both criteria met. **Week 3: the loop is built and RUN locally.** The train/eval leak check found that the dataset's own split shares its images, so the eval split moved day → night (**D11**) before a single training step ran. QLoRA then scored **47.2% vs a 31.9% no-perception prior (+15.3 pp, p=6.5e-09)** — the dataset can rank methods, and the gain is perception, not vocabulary. **Next: the same run on a T4.**
+> Last updated: 2026-08-13 · **Weeks 1 and 2 COMPLETE.** D ✅ dataset · E ✅ eval protocol frozen, benchmark row 1 = 35.1% · F ✅ fp16 tripwire, both criteria met. **Week 3: the loop is built and RUN locally.** The train/eval leak check found that the dataset's own split shares its images, so the eval split moved day → night (**D11**) before a single training step ran. QLoRA then scored **47.2% vs a 31.9% no-perception prior (+15.3 pp, p=6.5e-09)** — the dataset can rank methods, and the gain is perception, not vocabulary. **Week 3 is now CLOSED on a T4: 58.9% vs the 31.9% prior (+27.0 pp, p=6.4e-24), 6,924 steps in 60 min.** The T4 bought 2.85x the 3060's steps under the same wall-clock budget and scored +11.7 pp higher — so **accuracy is device-bound too**, not just wall-clock and VRAM. **Next: Week 4, all rows on a T4.**
 
 ---
 
@@ -277,7 +277,9 @@ A written shortlist with verified size/license/access per candidate, one recomme
   - **Budget = wall-clock, not steps** (§6). DoRA costs more per step, so step-matching would hand the slower method more compute. Consequence baked into `src/train.py`: a wall-clock budget has no known horizon, so the LR schedule is warmup → constant and `--cosine` requires `--max-steps`.
   - **Checkpointing = periodic adapter save only.** The 12 hr cap is not binding at a ~60 min budget; full optimizer/scaler/cursor resume is untested code on a path that fires only when a session dies. Build it when a run actually needs it.
   - ⚠️ **`requirements-kaggle.txt` remains the one untested piece** (Kaggle torch 2.10.0+cu128 / py3.12.13 vs local 2.13.0+cu130). It deliberately omits torch; the notebook prints every resolved version instead.
-- **W4** — DoRA + LoRA runs under matched VRAM/wall-clock budgets; seed variance; ViT-quantization ablation
+- **W4** — DoRA + LoRA under matched VRAM/wall-clock budgets; seed variance; ViT-quantization ablation. **Starts by re-running QLoRA on the T4**, because W3's per-example records were lost to session teardown and McNemar is a paired test. All three rows from one image, one session.
+  - ⚠️ **Run via "Save Version → Save & Run All (Commit)"**, not interactive Run All. A committed run persists `/kaggle/working` as versioned output; an interactive one persists nothing once the session tears down. That is how W3's adapter and results JSONs were lost.
+  - **Attach the pixels as a Kaggle Dataset first.** Rebuilding the eval split and training pool costs ~30 min of GPU quota per session with the GPU idle at 0%. `outputs/fw_pixels.zip` (157 MB) is built and waiting.
 - **W5** — latency/VRAM measurement on the 3060 as the *edge target*; adapter merge + 4-bit inference profiling
 - **W6+** — write-up, release adapters, repo polish; hooks for Project #2 (multi-LoRA serving)
 
@@ -290,7 +292,7 @@ A written shortlist with verified size/license/access per candidate, one recomme
 | Zero-shot | Cosmos-Reason2-2B | 4-bit NF4 | run |
 | Prompt-tuning / linear probe | Cosmos-Reason2-2B | frozen | run |
 | LoRA | Cosmos-Reason2-2B | fp16 | run |
-| **QLoRA** | Cosmos-Reason2-2B | 4-bit NF4 | ✅ **run 2026-08-13 (local, 3060): 47.2% vs a 31.9% prior, +15.3 pp, p=6.5e-09.** Accuracy is a benchmark number; its wall-clock/VRAM columns are 3060 numbers and must be re-measured on a T4 |
+| **QLoRA** | Cosmos-Reason2-2B | 4-bit NF4 | ✅ **run 2026-08-15 (T4): 58.9% vs a 31.9% prior, +27.0 pp, p=6.4e-24**, 6,924 steps / 60 min, peak 3.60 GiB. ⚠️ Superseded the 3060 row (47.2%, 2,428 steps) — see the wall-clock note below. ⚠️ Per-example records lost to session teardown, so W4 must re-run it for paired tests (`memory.md` §12) |
 | **DoRA (4-bit)** | Cosmos-Reason2-2B | 4-bit NF4 | run |
 | Full finetuning | Cosmos-Reason2-2B | — | **estimated only — not run (D2)** |
 
@@ -299,6 +301,8 @@ Measured per row: **accuracy** · **peak VRAM** · **wall-clock** · **inference
 🚨 **Accuracy is quoted against the PER-QUESTION-TYPE PRIOR, not the majority class *(added 2026-08-12)*.** The majority-class baseline answers `yes` to *"what colour is the truck"* — no real system would, so it is a straw man that hands every row ~7 pp of free credit. Answering the most common answer **of each question type** needs no image, no training and no understanding, because question type is readable straight off the question text. Measured zero-shot: **31.9% vs a 31.9% prior on night (+0.0 pp)** and **35.1% vs 33.4% on day (+1.7 pp)** — against the +7.0 and +8.8 pp the majority baseline reports. `src/eval.py` computes `prior_baseline` and `delta_over_prior_pp` per run. **A benchmark row that only beats the majority class has demonstrated answer routing, not perception.**
 
 Budget matching: runs are compared at equal wall-clock *and* equal peak VRAM, not equal epochs. That's the whole point.
+
+🚨 **A wall-clock budget makes ACCURACY device-bound, not just the timing columns *(measured 2026-08-15)*.** Identical code, data and effective batch: the 3060 fitted **2,428** steps (1 epoch) into 60 min and scored **47.2%**; the T4 fitted **6,924** (3 epochs) and scored **58.9%**. Device speed converts directly into optimization steps, and steps into accuracy. §7 of `eval-protocol.md` already says device-bound quantities are only comparable within a device — under this budget design, **accuracy is one of them**. Every W4 row must come off a T4, and the 3060's 47.2% must never appear in a column beside a T4 number.
 
 ---
 

@@ -510,6 +510,42 @@ example is far cheaper than the headline geometry suggests.*
 > per epoch over 1,817 rows, so a 60 min budget runs many epochs across the same 276
 > images.
 
+**What actually happened — measured on the T4, 2026-08-15:**
+
+```
+batch  1  seq 101  peak 3.44 GiB
+batch  2  seq 101  peak 4.14 GiB
+batch  4  seq 101  peak 5.64 GiB
+batch  8  seq 104  peak 8.70 GiB
+batch 16  OOM
+fit over 1..8:  fixed 2.69 GiB · per-example 0.752 GiB · extrapolated max 15
+```
+
+**You were right on both counts.** 8 is the largest batch that fits; 16 dies by OOM, so
+VRAM is genuinely the binding constraint and 8 is genuinely where it binds.
+
+What the curve says that the prediction could not: **each example costs 0.752 GiB of
+retained activations, against a 2.69 GiB fixed cost.** Three quarters of a gigabyte for a
+~101-token sequence, on a model whose weights are 1.47 GiB. That ratio is the whole story
+of why the ceiling is single-digit on a 14.6 GiB card — and it is the *vision tower*
+holding those activations, the same tower that owns the fp16 overflow in Milestone F.
+
+⚠️ **A caution given to you before the run was wrong, and worth recording.** You were told
+`seq_len` would climb as batch grew, because `collate()` pads to the longest example in the
+batch — so the linear fit would under-predict. Measured: **101 → 101 → 101 → 104.**
+These questions are near-uniform in length, so padding costs almost nothing here.
+
+<!-- Now the part the number could not settle. You said "VRAM is the constraint" and the
+     OOM proved it. But answer (b) anyway, because W4 depends on it:
+
+     At batch 8 the pool is ~227 steps per epoch. The T4 ran 6,924 steps in 60 minutes,
+     which at batch 1 was 3 full epochs over the same 276 images. At batch 8 the same
+     hour would be far more epochs over those same 276 pictures.
+
+     So: if batch 8 fits, SHOULD you use it? What is the thing that stops being true
+     when you show a model the same 276 images twenty times instead of three? -->
+
+
 **Prediction 3 — QLoRA day → night.** ⚠️ **Overtaken, deliberately.**
 
 > You chose to run the decisive experiment rather than pause for the prediction.
