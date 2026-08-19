@@ -34,3 +34,13 @@ huggingface_hub[cli]>=0.34,<1.0
 hf_xet
 
 # trl is deferred to the training milestone (Week 3) — not needed yet.
+
+# Kaggle CLI. Added 2026-08-15 (Week 3) to pull run artifacts back off Kaggle:
+#   kaggle kernels output <owner>/<slug> -p outputs/kaggle_t4
+# Auth is `kaggle auth login` (browser OAuth), cached at ~/.kaggle/credentials.json.
+# ⚠️ It authenticates as the browser's DEFAULT Google session. This project has two
+# Kaggle accounts and the wrong one is the default -- the project account is
+# aadipathak2323@gmail.com = username `aadipathak12`. Wrong account looks like
+# "Permission 'kernels.get' was denied" on a notebook that plainly exists; delete
+# the credentials file to switch. Local-only: Kaggle notebooks never need this.
+kaggle
